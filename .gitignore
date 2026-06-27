@@ -1,0 +1,38 @@
+# Godot-specific
+.import/
+.godot/
+export.cfg
+export_presets.cfg
+
+# Mono / C#
+.mono/
+data_*/
+*.csproj
+*.sln
+*.user
+*.mdb
+*.pdb
+
+# Exported builds
+bin/
+build/
+dist/
+exports/
+
+# Logs
+*.log
+
+# OS-generated files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary files
+*.tmp
+*.temp
