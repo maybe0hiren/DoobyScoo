@@ -1,0 +1,75 @@
+[gd_scene format=3 uid="uid://bgai6gyswgd1c"]
+
+[ext_resource type="Texture2D" uid="uid://y0cctp247vnf" path="res://assets/dog/idle.png" id="1_on80e"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_vwjdu"]
+atlas = ExtResource("1_on80e")
+region = Rect2(0, 0, 96, 288)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_qjqk5"]
+atlas = ExtResource("1_on80e")
+region = Rect2(96, 0, 96, 288)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_gmowd"]
+atlas = ExtResource("1_on80e")
+region = Rect2(192, 0, 96, 288)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_tpbal"]
+atlas = ExtResource("1_on80e")
+region = Rect2(288, 0, 96, 288)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_iaoh4"]
+atlas = ExtResource("1_on80e")
+region = Rect2(384, 0, 96, 288)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_i2xh6"]
+atlas = ExtResource("1_on80e")
+region = Rect2(480, 0, 96, 288)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_laypt"]
+atlas = ExtResource("1_on80e")
+region = Rect2(672, 0, 96, 288)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_ei5el"]
+atlas = ExtResource("1_on80e")
+region = Rect2(768, 0, 96, 288)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_jlmqp"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_vwjdu")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_qjqk5")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_gmowd")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_tpbal")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_iaoh4")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_i2xh6")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_laypt")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_ei5el")
+}],
+"loop": true,
+"name": &"idle",
+"speed": 8.0
+}]
+
+[node name="Dog" type="CharacterBody2D" unique_id=2100381263]
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=676007381]
+scale = Vector2(4.1041665, 3)
+sprite_frames = SubResource("SpriteFrames_jlmqp")
+animation = &"idle"
+autoplay = "idle"
