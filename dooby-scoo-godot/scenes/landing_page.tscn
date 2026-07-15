@@ -1,0 +1,50 @@
+[gd_scene format=3 uid="uid://dkba1is3xv0tu"]
+
+[ext_resource type="Script" uid="uid://blb82yiiek08r" path="res://Scripts/landing_page.gd" id="1_ps000"]
+[ext_resource type="Texture2D" uid="uid://nhaw43buishn" path="res://assets/backgroundImages/mainBG.png" id="1_yfpfs"]
+[ext_resource type="StyleBox" uid="uid://dnh01j62lykjt" path="res://Themes/simpleButton.tres" id="3_nftrr"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_nftrr"]
+bg_color = Color(0, 0, 0, 0.6156863)
+corner_radius_top_left = 60
+corner_radius_top_right = 60
+corner_radius_bottom_right = 60
+corner_radius_bottom_left = 60
+shadow_size = 2
+shadow_offset = Vector2(6.69, 5.405)
+
+[node name="LandingPage" type="Node2D" unique_id=991402344]
+script = ExtResource("1_ps000")
+
+[node name="BG" type="TextureRect" parent="." unique_id=1031213582]
+offset_left = -184.0
+offset_top = 1.0
+offset_right = 1268.0
+offset_bottom = 648.0
+texture = ExtResource("1_yfpfs")
+expand_mode = 1
+
+[node name="Panel" type="Panel" parent="." unique_id=1740933251]
+offset_left = 355.0
+offset_top = 470.0
+offset_right = 735.0
+offset_bottom = 546.0
+theme_override_styles/panel = SubResource("StyleBoxFlat_nftrr")
+metadata/_edit_group_ = true
+
+[node name="NewMapButton" type="Button" parent="." unique_id=2028949283]
+offset_left = 356.0
+offset_top = 470.0
+offset_right = 737.0
+offset_bottom = 546.0
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 31
+theme_override_styles/normal = ExtResource("3_nftrr")
+theme_override_styles/pressed = ExtResource("3_nftrr")
+theme_override_styles/hover = ExtResource("3_nftrr")
+theme_override_styles/focus = ExtResource("3_nftrr")
+text = "Make New Map"
+metadata/_edit_group_ = true
+
+[connection signal="button_down" from="NewMapButton" to="." method="_on_new_map_button_button_down"]
+[connection signal="button_up" from="NewMapButton" to="." method="_on_new_map_button_button_up"]

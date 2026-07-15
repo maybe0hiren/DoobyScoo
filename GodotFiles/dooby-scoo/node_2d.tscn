@@ -1,7 +1,0 @@
-[gd_scene format=3 uid="uid://s3qhef568j3e"]
-
-[ext_resource type="PackedScene" uid="uid://hndnxc7w0cuu" path="res://scenes/landing_page.tscn" id="1_wtcfe"]
-
-[node name="Main" type="Node2D" unique_id=1375297656]
-
-[node name="LandingPage" parent="." unique_id=1151930943 instance=ExtResource("1_wtcfe")]

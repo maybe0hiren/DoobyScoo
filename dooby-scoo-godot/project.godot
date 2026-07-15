@@ -10,8 +10,8 @@ config_version=5
 
 [application]
 
-config/name="DoobyScoo"
-run/main_scene="uid://s3qhef568j3e"
+config/name="DoobyScooGodot"
+run/main_scene="uid://cm6h5hqekdwfq"
 config/features=PackedStringArray("4.6", "GL Compatibility")
 config/icon="res://icon.svg"
 
