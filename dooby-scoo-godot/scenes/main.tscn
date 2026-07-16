@@ -1,10 +1,10 @@
 [gd_scene format=3 uid="uid://cm6h5hqekdwfq"]
 
 [ext_resource type="PackedScene" uid="uid://dkba1is3xv0tu" path="res://scenes/landing_page.tscn" id="1_o5qli"]
-[ext_resource type="PackedScene" uid="uid://fjn7kmvle63h" path="res://scenes/make_new_map_page.tscn" id="2_0wfyh"]
+[ext_resource type="PackedScene" uid="uid://c3lhm720u4i1" path="res://scenes/map_editor_page.tscn" id="2_0wfyh"]
 
 [node name="Main" type="Node2D" unique_id=753095589]
 
 [node name="LandingPage" parent="." unique_id=991402344 instance=ExtResource("1_o5qli")]
 
-[node name="MakeNewMapPage" parent="." unique_id=318276391 instance=ExtResource("2_0wfyh")]
+[node name="MapEditorPage" parent="." unique_id=1632855231 instance=ExtResource("2_0wfyh")]

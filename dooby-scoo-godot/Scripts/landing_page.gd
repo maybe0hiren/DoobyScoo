@@ -28,4 +28,4 @@ func _on_new_map_button_button_up() -> void:
 	tween.set_ease(Tween.EASE_OUT);
 	tween.tween_property(newMapButton, "position", ogPosition, 0.08);
 	await tween.finished;
-	get_tree().change_scene_to_file("res://scenes/make_new_map_page.tscn");
+	get_tree().change_scene_to_file("res://scenes/map_editor_page.tscn");

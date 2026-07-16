@@ -1,0 +1,84 @@
+[gd_scene format=3 uid="uid://c3lhm720u4i1"]
+
+[ext_resource type="Texture2D" uid="uid://nhaw43buishn" path="res://assets/backgroundImages/mainBG.png" id="1_n5lbb"]
+
+[sub_resource type="LabelSettings" id="LabelSettings_n5lbb"]
+font_size = 51
+font_color = Color(0, 0, 0, 1)
+
+[node name="MapEditorPage" type="Control" unique_id=1632855231]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="BG" type="TextureRect" parent="." unique_id=570223850]
+layout_mode = 0
+offset_left = -219.0
+offset_top = 2.0
+offset_right = 1365.0
+offset_bottom = 646.0
+texture = ExtResource("1_n5lbb")
+expand_mode = 1
+
+[node name="HBoxContainer" type="HBoxContainer" parent="." unique_id=243377561]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="GridMap" type="Control" parent="HBoxContainer" unique_id=1131785181]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Inventory" type="VBoxContainer" parent="HBoxContainer" unique_id=1361154007]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HBoxContainer/Inventory" unique_id=505817056]
+custom_minimum_size = Vector2(100, 100)
+layout_mode = 2
+text = "Inventory"
+label_settings = SubResource("LabelSettings_n5lbb")
+horizontal_alignment = 1
+vertical_alignment = 1
+uppercase = true
+
+[node name="Start" type="Button" parent="HBoxContainer/Inventory" unique_id=1685514787]
+custom_minimum_size = Vector2(400, 80)
+layout_mode = 2
+theme_override_font_sizes/font_size = 50
+text = "Start"
+
+[node name="End" type="Button" parent="HBoxContainer/Inventory" unique_id=272548928]
+custom_minimum_size = Vector2(400, 80)
+layout_mode = 2
+theme_override_font_sizes/font_size = 50
+text = "End"
+
+[node name="Pit" type="Button" parent="HBoxContainer/Inventory" unique_id=675291691]
+custom_minimum_size = Vector2(400, 80)
+layout_mode = 2
+theme_override_font_sizes/font_size = 50
+text = "Pit"
+
+[node name="Bone" type="Button" parent="HBoxContainer/Inventory" unique_id=312885082]
+custom_minimum_size = Vector2(400, 80)
+layout_mode = 2
+theme_override_font_sizes/font_size = 50
+text = "Bone"
+
+[node name="Save" type="Button" parent="HBoxContainer/Inventory" unique_id=1089379303]
+custom_minimum_size = Vector2(400, 80)
+layout_mode = 2
+theme_override_font_sizes/font_size = 50
+text = "Undo"
+
+[node name="Undo" type="Button" parent="HBoxContainer/Inventory" unique_id=750125412]
+custom_minimum_size = Vector2(400, 80)
+layout_mode = 2
+theme_override_font_sizes/font_size = 50
+text = "Save"
