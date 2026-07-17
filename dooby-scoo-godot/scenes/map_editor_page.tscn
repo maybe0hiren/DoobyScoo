@@ -1,5 +1,6 @@
 [gd_scene format=3 uid="uid://c3lhm720u4i1"]
 
+[ext_resource type="Script" uid="uid://dm1pnxbbb15o2" path="res://Scripts/map_editor_page.gd" id="1_20pxv"]
 [ext_resource type="Texture2D" uid="uid://nhaw43buishn" path="res://assets/backgroundImages/mainBG.png" id="1_n5lbb"]
 [ext_resource type="Script" uid="uid://c86h8d8anr2oe" path="res://Scripts/grid_map.gd" id="2_gheom"]
 
@@ -14,6 +15,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+script = ExtResource("1_20pxv")
 
 [node name="BG" type="TextureRect" parent="." unique_id=570223850]
 layout_mode = 0
@@ -85,3 +87,10 @@ custom_minimum_size = Vector2(400, 80)
 layout_mode = 2
 theme_override_font_sizes/font_size = 50
 text = "Save"
+
+[connection signal="pressed" from="HBoxContainer/Inventory/Start" to="." method="_on_start_pressed"]
+[connection signal="pressed" from="HBoxContainer/Inventory/End" to="." method="_on_end_pressed"]
+[connection signal="pressed" from="HBoxContainer/Inventory/Pit" to="." method="_on_pit_pressed"]
+[connection signal="pressed" from="HBoxContainer/Inventory/Bone" to="." method="_on_bone_pressed"]
+[connection signal="pressed" from="HBoxContainer/Inventory/Save" to="." method="_on_save_pressed"]
+[connection signal="pressed" from="HBoxContainer/Inventory/Undo" to="." method="_on_undo_pressed"]
