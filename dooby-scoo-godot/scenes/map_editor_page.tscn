@@ -1,6 +1,7 @@
 [gd_scene format=3 uid="uid://c3lhm720u4i1"]
 
 [ext_resource type="Texture2D" uid="uid://nhaw43buishn" path="res://assets/backgroundImages/mainBG.png" id="1_n5lbb"]
+[ext_resource type="Script" uid="uid://c86h8d8anr2oe" path="res://Scripts/grid_map.gd" id="2_gheom"]
 
 [sub_resource type="LabelSettings" id="LabelSettings_n5lbb"]
 font_size = 51
@@ -34,6 +35,8 @@ grow_vertical = 2
 [node name="GridMap" type="Control" parent="HBoxContainer" unique_id=1131785181]
 layout_mode = 2
 size_flags_horizontal = 3
+script = ExtResource("2_gheom")
+metadata/_edit_group_ = true
 
 [node name="Inventory" type="VBoxContainer" parent="HBoxContainer" unique_id=1361154007]
 layout_mode = 2
