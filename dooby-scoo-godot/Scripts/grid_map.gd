@@ -15,6 +15,7 @@ const END := 2
 const PIT := 3
 const BONE := 4
 
+
 # Grid Data
 
 var grid = []
@@ -24,6 +25,13 @@ var selectedCell := Vector2i(-1, -1)
 var startCount := 0
 var endCount := 0
 var boneCount := 0
+
+var draggingPit := false          # True only after an actual drag begins
+var draggedPit := Vector2i(-1, -1)
+var hoveredCell := Vector2i(-1, -1)
+
+var pendingPit := Vector2i(-1, -1)   # Cell where mouse was pressed
+var pitExists := false               # Was there already a pit here?
 
 # Tool Selection
 
@@ -46,13 +54,34 @@ func _ready():
 		for col in range(GRID_SIZE):
 			grid[row].append({
 				"element": EMPTY,
-				"top": false,
-				"bottom": false,
-				"left": false,
-				"right": false
+				"top": row == 0,
+				"bottom": row == GRID_SIZE - 1,
+				"left": col == 0,
+				"right": col == GRID_SIZE - 1,
+				"pit_destination": null,
+				"visited": false
 			})
 
 	queue_redraw()
+
+func cell_center(cell: Vector2i) -> Vector2:
+	return PADDING + Vector2(
+		cell.x * CELL_SIZE + CELL_SIZE / 2.0,
+		cell.y * CELL_SIZE + CELL_SIZE / 2.0
+	)
+	
+func draw_arrow(start: Vector2, end: Vector2, color: Color, width: float = 3.0):
+	draw_line(start, end, color, width)
+
+	var direction = (end - start).normalized()
+	var arrow_length = 12.0
+	var arrow_angle = deg_to_rad(30)
+
+	var left = end - direction.rotated(arrow_angle) * arrow_length
+	var right = end - direction.rotated(-arrow_angle) * arrow_length
+
+	draw_line(end, left, color, width)
+	draw_line(end, right, color, width)
 
 # Drawing
 
@@ -68,6 +97,39 @@ func _draw():
 				false,
 				2.0
 			)
+
+			# Walls
+			if grid[row][col]["top"]:
+				draw_line(
+					Vector2(x, y),
+					Vector2(x + CELL_SIZE, y),
+					Color.BLACK,
+					6.0
+				)
+
+			if grid[row][col]["bottom"]:
+				draw_line(
+					Vector2(x, y + CELL_SIZE),
+					Vector2(x + CELL_SIZE, y + CELL_SIZE),
+					Color.BLACK,
+					6.0
+				)
+
+			if grid[row][col]["left"]:
+				draw_line(
+					Vector2(x, y),
+					Vector2(x, y + CELL_SIZE),
+					Color.BLACK,
+					6.0
+				)
+
+			if grid[row][col]["right"]:
+				draw_line(
+					Vector2(x + CELL_SIZE, y),
+					Vector2(x + CELL_SIZE, y + CELL_SIZE),
+					Color.BLACK,
+					6.0
+				)
 
 			match grid[row][col]["element"]:
 				START:
@@ -98,11 +160,33 @@ func _draw():
 						Color.YELLOW
 					)
 
+	# Draw permanent pit connections
+	for row in range(GRID_SIZE):
+		for col in range(GRID_SIZE):
+			var cell = grid[row][col]
+
+			if cell["element"] == PIT and cell["pit_destination"] != null:
+				draw_arrow(
+					cell_center(Vector2i(col, row)),
+					cell_center(cell["pit_destination"]),
+					Color.DEEP_SKY_BLUE,
+					3
+				)
+
+	# Draw live drag preview
+	if draggingPit:
+		draw_arrow(
+			cell_center(draggedPit),
+			cell_center(hoveredCell),
+			Color.YELLOW,
+			3
+		)
+
+	# Selected cell highlight and wall handles
 	if selectedCell.x != -1:
 		var x = PADDING.x + selectedCell.x * CELL_SIZE
 		var y = PADDING.y + selectedCell.y * CELL_SIZE
 
-		# Selected cell highlight
 		draw_rect(
 			Rect2(
 				x,
@@ -114,30 +198,28 @@ func _draw():
 			true
 		)
 
-		# Wall Handles
-
-		# Top
+		# Top Handle
 		draw_circle(
 			Vector2(x + CELL_SIZE / 2, y),
 			HANDLE_SIZE,
 			HANDLE_COLOR
 		)
 
-		# Bottom
+		# Bottom Handle
 		draw_circle(
 			Vector2(x + CELL_SIZE / 2, y + CELL_SIZE),
 			HANDLE_SIZE,
 			HANDLE_COLOR
 		)
 
-		# Left
+		# Left Handle
 		draw_circle(
 			Vector2(x, y + CELL_SIZE / 2),
 			HANDLE_SIZE,
 			HANDLE_COLOR
 		)
 
-		# Right
+		# Right Handle
 		draw_circle(
 			Vector2(x + CELL_SIZE, y + CELL_SIZE / 2),
 			HANDLE_SIZE,
@@ -181,13 +263,47 @@ func place_element(row: int, col: int, element: int):
 			boneCount += 1
 
 	grid[row][col]["element"] = element
+	
+func get_cell_position(row: int, col: int) -> Vector2:
+	return Vector2(
+		PADDING.x + col * CELL_SIZE,
+		PADDING.y + row * CELL_SIZE
+	)
+
+
+func point_in_circle(point: Vector2, center: Vector2, radius: float) -> bool:
+	return point.distance_squared_to(center) <= radius * radius
+
+
+func get_clicked_handle(mouse_pos: Vector2) -> String:
+	if selectedCell.x == -1:
+		return ""
+
+	var pos = get_cell_position(selectedCell.y, selectedCell.x)
+
+	var top = Vector2(pos.x + CELL_SIZE / 2, pos.y)
+	var bottom = Vector2(pos.x + CELL_SIZE / 2, pos.y + CELL_SIZE)
+	var left = Vector2(pos.x, pos.y + CELL_SIZE / 2)
+	var right = Vector2(pos.x + CELL_SIZE, pos.y + CELL_SIZE / 2)
+
+	if point_in_circle(mouse_pos, top, HANDLE_SIZE):
+		return "top"
+
+	if point_in_circle(mouse_pos, bottom, HANDLE_SIZE):
+		return "bottom"
+
+	if point_in_circle(mouse_pos, left, HANDLE_SIZE):
+		return "left"
+
+	if point_in_circle(mouse_pos, right, HANDLE_SIZE):
+		return "right"
+
+	return ""
 
 # Mouse Input
 
 func _gui_input(event):
-	if event is InputEventMouseButton \
-	and event.button_index == MOUSE_BUTTON_LEFT \
-	and event.pressed:
+	if event is InputEventMouseButton:
 
 		var pos = event.position - PADDING
 
@@ -205,17 +321,122 @@ func _gui_input(event):
 
 		selectedCell = Vector2i(col, row)
 
-		match currentTool:
-			Tool.START:
-				place_element(row, col, START)
+		if event.pressed:
 
-			Tool.END:
-				place_element(row, col, END)
+			var handle = get_clicked_handle(event.position)
 
-			Tool.PIT:
-				place_element(row, col, PIT)
+			if event.button_index == MOUSE_BUTTON_LEFT and handle != "":
+				toggle_wall(selectedCell.y, selectedCell.x, handle)
+				return
 
-			Tool.BONE:
-				place_element(row, col, BONE)
+			if event.button_index == MOUSE_BUTTON_RIGHT:
+				remove_existing_element(row, col)
+				queue_redraw()
+				return
 
-		queue_redraw()
+			if currentTool == Tool.PIT:
+				pendingPit = Vector2i(col, row)
+				pitExists = (grid[row][col]["element"] == PIT)
+
+				if pitExists:
+					draggedPit = pendingPit
+
+				return
+
+			match currentTool:
+				Tool.START:
+					place_element(row, col, START)
+
+				Tool.END:
+					place_element(row, col, END)
+
+				Tool.BONE:
+					place_element(row, col, BONE)
+
+			queue_redraw()
+
+		else:
+			# Mouse released
+			if draggingPit:
+				var destination = Vector2i(col, row)
+
+				if destination != draggedPit:
+					grid[draggedPit.y][draggedPit.x]["pit_destination"] = destination
+
+			draggingPit = false
+			draggedPit = Vector2i(-1, -1)
+			hoveredCell = Vector2i(-1, -1)
+			pendingPit = Vector2i(-1, -1)
+			pitExists = false
+
+			queue_redraw()
+
+	elif event is InputEventMouseMotion:
+
+		var pos = event.position - PADDING
+
+		if pos.x < 0 or pos.y < 0:
+			return
+
+		var col = int(pos.x / CELL_SIZE)
+		var row = int(pos.y / CELL_SIZE)
+
+		if row < 0 or row >= GRID_SIZE:
+			return
+
+		if col < 0 or col >= GRID_SIZE:
+			return
+
+		if draggingPit:
+			hoveredCell = Vector2i(col, row)
+			queue_redraw()
+
+		elif pendingPit != Vector2i(-1, -1) and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+
+			if Vector2i(col, row) != pendingPit:
+
+				if !pitExists:
+					grid[pendingPit.y][pendingPit.x]["element"] = PIT
+
+				draggingPit = true
+				draggedPit = pendingPit
+				hoveredCell = Vector2i(col, row)
+				queue_redraw()
+		
+func toggle_wall(row: int, col: int, wall: String):
+	if wall == "top" and row == 0:
+		return
+	if wall == "bottom" and row == GRID_SIZE - 1:
+		return
+	if wall == "left" and col == 0:
+		return
+	if wall == "right" and col == GRID_SIZE - 1:
+		return
+		
+		
+	match wall:
+		"top":
+			grid[row][col]["top"] = !grid[row][col]["top"]
+
+			if row > 0:
+				grid[row - 1][col]["bottom"] = grid[row][col]["top"]
+
+		"bottom":
+			grid[row][col]["bottom"] = !grid[row][col]["bottom"]
+
+			if row < GRID_SIZE - 1:
+				grid[row + 1][col]["top"] = grid[row][col]["bottom"]
+
+		"left":
+			grid[row][col]["left"] = !grid[row][col]["left"]
+
+			if col > 0:
+				grid[row][col - 1]["right"] = grid[row][col]["left"]
+
+		"right":
+			grid[row][col]["right"] = !grid[row][col]["right"]
+
+			if col < GRID_SIZE - 1:
+				grid[row][col + 1]["left"] = grid[row][col]["right"]
+
+	queue_redraw()
