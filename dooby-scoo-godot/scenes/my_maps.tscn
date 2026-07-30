@@ -1,0 +1,67 @@
+[gd_scene format=3 uid="uid://bm3ddrntpn30a"]
+
+[ext_resource type="Script" uid="uid://b71753bydk4hh" path="res://Scripts/my_maps.gd" id="1_c70ot"]
+[ext_resource type="Texture2D" uid="uid://nhaw43buishn" path="res://assets/backgroundImages/mainBG.png" id="2_bm3i5"]
+
+[node name="Control" type="Control" unique_id=2131106682]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_c70ot")
+
+[node name="BG" type="TextureRect" parent="." unique_id=900772553]
+layout_mode = 0
+offset_left = -189.0
+offset_right = 1395.0
+offset_bottom = 647.0
+texture = ExtResource("2_bm3i5")
+expand_mode = 1
+
+[node name="MarginContainer" type="MarginContainer" parent="." unique_id=666889859]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBoxContainer" type="VBoxContainer" parent="MarginContainer" unique_id=917699930]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Header" type="HBoxContainer" parent="MarginContainer/VBoxContainer" unique_id=497953448]
+layout_mode = 2
+
+[node name="BackButton" type="Button" parent="MarginContainer/VBoxContainer/Header" unique_id=1461089553]
+layout_mode = 2
+text = "<- BACK"
+
+[node name="Title" type="Label" parent="MarginContainer/VBoxContainer/Header" unique_id=1633731286]
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 36
+text = "MY MAZES"
+
+[node name="ColumnHeaders" type="HBoxContainer" parent="MarginContainer/VBoxContainer" unique_id=542468777]
+layout_mode = 2
+
+[node name="MazeNameLabel" type="Label" parent="MarginContainer/VBoxContainer/ColumnHeaders" unique_id=1122667566]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Maze Name"
+
+[node name="LastModifiedLabel" type="Label" parent="MarginContainer/VBoxContainer/ColumnHeaders" unique_id=1577318951]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Last Modified"
+
+[node name="ActionsLabel" type="Label" parent="MarginContainer/VBoxContainer/ColumnHeaders" unique_id=614596875]
+layout_mode = 2
+size_flags_horizontal = 8
+text = "Actions"
+
+[node name="VBoxContainer2" type="VBoxContainer" parent="MarginContainer/VBoxContainer" unique_id=1852071237]
+layout_mode = 2

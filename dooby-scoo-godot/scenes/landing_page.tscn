@@ -32,6 +32,14 @@ offset_bottom = 546.0
 theme_override_styles/panel = SubResource("StyleBoxFlat_nftrr")
 metadata/_edit_group_ = true
 
+[node name="Panel2" type="Panel" parent="." unique_id=134487511]
+offset_left = 355.0
+offset_top = 365.875
+offset_right = 734.9999
+offset_bottom = 441.87473
+theme_override_styles/panel = SubResource("StyleBoxFlat_nftrr")
+metadata/_edit_group_ = true
+
 [node name="NewMapButton" type="Button" parent="." unique_id=2028949283]
 offset_left = 356.0
 offset_top = 470.0
@@ -46,5 +54,21 @@ theme_override_styles/focus = ExtResource("3_nftrr")
 text = "Make New Map"
 metadata/_edit_group_ = true
 
+[node name="MyMapsButton" type="Button" parent="." unique_id=1042898809]
+offset_left = 355.0
+offset_top = 366.0
+offset_right = 736.0
+offset_bottom = 442.0
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 31
+theme_override_styles/normal = ExtResource("3_nftrr")
+theme_override_styles/pressed = ExtResource("3_nftrr")
+theme_override_styles/hover = ExtResource("3_nftrr")
+theme_override_styles/focus = ExtResource("3_nftrr")
+text = "My Maps"
+metadata/_edit_group_ = true
+
 [connection signal="button_down" from="NewMapButton" to="." method="_on_new_map_button_button_down"]
 [connection signal="button_up" from="NewMapButton" to="." method="_on_new_map_button_button_up"]
+[connection signal="button_down" from="MyMapsButton" to="." method="_on_my_maps_button_button_down"]
+[connection signal="button_up" from="MyMapsButton" to="." method="_on_my_maps_button_button_up"]
