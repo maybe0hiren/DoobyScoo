@@ -63,6 +63,8 @@ func _ready():
 			})
 
 	queue_redraw()
+	if !MazeSession.loaded_maze.is_empty():
+		load_maze(MazeSession.loaded_maze["grid"])
 
 func cell_center(cell: Vector2i) -> Vector2:
 	return PADDING + Vector2(
@@ -134,7 +136,7 @@ func _draw():
 			match grid[row][col]["element"]:
 				START:
 					draw_circle(
-						Vector2(x + CELL_SIZE / 2, y + CELL_SIZE / 2),
+ 						Vector2(x + CELL_SIZE / 2, y + CELL_SIZE / 2),
 						10,
 						Color.GREEN
 					)
@@ -166,12 +168,21 @@ func _draw():
 			var cell = grid[row][col]
 
 			if cell["element"] == PIT and cell["pit_destination"] != null:
-				draw_arrow(
-					cell_center(Vector2i(col, row)),
-					cell_center(cell["pit_destination"]),
-					Color.DEEP_SKY_BLUE,
-					3
+
+				var dest = cell["pit_destination"]
+
+				print("TYPE:", typeof(dest))
+				print("VALUE:", dest)
+
+				if dest is Vector2i:
+					draw_arrow(
+						cell_center(Vector2i(col, row)),
+						cell_center(dest),
+						Color.DEEP_SKY_BLUE,
+						3
 				)
+				else:
+					print("INVALID DESTINATION")
 
 	# Draw live drag preview
 	if draggingPit:
@@ -238,6 +249,7 @@ func remove_existing_element(row: int, col: int):
 			boneCount -= 1
 
 	grid[row][col]["element"] = EMPTY
+	get_tree().current_scene.mark_dirty()
 
 
 func place_element(row: int, col: int, element: int):
@@ -263,6 +275,7 @@ func place_element(row: int, col: int, element: int):
 			boneCount += 1
 
 	grid[row][col]["element"] = element
+	get_tree().current_scene.mark_dirty()
 	
 func get_cell_position(row: int, col: int) -> Vector2:
 	return Vector2(
@@ -362,6 +375,7 @@ func _gui_input(event):
 
 				if destination != draggedPit:
 					grid[draggedPit.y][draggedPit.x]["pit_destination"] = destination
+					get_tree().current_scene.mark_dirty()
 
 			draggingPit = false
 			draggedPit = Vector2i(-1, -1)
@@ -397,6 +411,7 @@ func _gui_input(event):
 
 				if !pitExists:
 					grid[pendingPit.y][pendingPit.x]["element"] = PIT
+					get_tree().current_scene.mark_dirty()
 
 				draggingPit = true
 				draggedPit = pendingPit
@@ -440,3 +455,54 @@ func toggle_wall(row: int, col: int, wall: String):
 				grid[row][col + 1]["left"] = grid[row][col]["right"]
 
 	queue_redraw()
+	get_tree().current_scene.mark_dirty()
+
+func load_maze(grid_data: Array) -> void:
+	print("LOAD MAZE CALLED")
+
+	grid = grid_data.duplicate(true)
+
+	startCount = 0
+	endCount = 0
+	boneCount = 0
+
+	for row in range(GRID_SIZE):
+		for col in range(GRID_SIZE):
+
+			# Restore element type
+			grid[row][col]["element"] = int(grid[row][col]["element"])
+
+			# Restore pit destination
+			var pit = grid[row][col]["pit_destination"]
+
+			if pit != null:
+				if pit is Dictionary:
+					grid[row][col]["pit_destination"] = Vector2i(
+						int(pit["x"]),
+						int(pit["y"])
+					)
+				elif pit is Array and pit.size() == 2:
+					grid[row][col]["pit_destination"] = Vector2i(
+						int(pit[0]),
+						int(pit[1])
+					)
+
+			match grid[row][col]["element"]:
+				START:
+					startCount += 1
+				END:
+					endCount += 1
+				BONE:
+					boneCount += 1
+
+	selectedCell = Vector2i(-1, -1)
+
+	draggingPit = false
+	draggedPit = Vector2i(-1, -1)
+	hoveredCell = Vector2i(-1, -1)
+	pendingPit = Vector2i(-1, -1)
+	pitExists = false
+
+	queue_redraw()
+
+	print("Loaded counts:", startCount, endCount, boneCount)

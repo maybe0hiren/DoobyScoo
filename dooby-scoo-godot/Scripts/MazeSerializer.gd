@@ -2,7 +2,29 @@ extends RefCounted
 
 class_name MazeSerializer
 
+const EMPTY := 0
+const START := 1
+const END := 2
+const PIT := 3
+const BONE := 4
+
 const SAVE_DIRECTORY := "user://Mazes/"
+
+
+static func _serialize_grid(grid: Array) -> Array:
+	var save_grid = grid.duplicate(true)
+
+	for row in range(save_grid.size()):
+		for col in range(save_grid[row].size()):
+			var pit = save_grid[row][col]["pit_destination"]
+
+			if pit != null:
+				save_grid[row][col]["pit_destination"] = {
+					"x": pit.x,
+					"y": pit.y
+				}
+
+	return save_grid
 
 
 static func save(
@@ -11,7 +33,6 @@ static func save(
 	username: String
 ) -> bool:
 
-	# Ensure save directory exists
 	var absolute_dir := ProjectSettings.globalize_path(SAVE_DIRECTORY)
 
 	if !DirAccess.dir_exists_absolute(absolute_dir):
@@ -20,7 +41,6 @@ static func save(
 			push_error("Failed to create save directory: " + absolute_dir)
 			return false
 
-	# Metadata
 	var metadata := {
 		"maze_name": maze_name,
 		"author": username,
@@ -31,10 +51,9 @@ static func save(
 
 	var maze := {
 		"metadata": metadata,
-		"grid": grid
+		"grid": _serialize_grid(grid)
 	}
 
-	# Clean filename
 	var safe_name := maze_name.strip_edges()
 
 	if safe_name.is_empty():
@@ -42,29 +61,48 @@ static func save(
 
 	safe_name = safe_name.replace(" ", "_")
 
-	# Remove characters invalid in filenames
 	for c in ["/", "\\", ":", "*", "?", "\"", "<", ">", "|"]:
 		safe_name = safe_name.replace(c, "_")
 
 	var path := SAVE_DIRECTORY + safe_name + ".json"
 
-	print("Saving maze to: ", ProjectSettings.globalize_path(path))
-
 	var file := FileAccess.open(path, FileAccess.WRITE)
 
 	if file == null:
-		push_error("Failed to open file for writing: " + ProjectSettings.globalize_path(path))
+		push_error("Failed to open file for writing.")
 		return false
 
 	file.store_string(JSON.stringify(maze, "\t"))
 	file.close()
 
-	print("Maze saved successfully.")
+	return true
+
+
+static func save_to_path(
+	grid: Array,
+	path: String
+) -> bool:
+
+	var data = load_maze(path)
+
+	if data.is_empty():
+		return false
+
+	data["grid"] = _serialize_grid(grid)
+
+	var file := FileAccess.open(path, FileAccess.WRITE)
+
+	if file == null:
+		push_error("Failed to overwrite maze.")
+		return false
+
+	file.store_string(JSON.stringify(data, "\t"))
+	file.close()
 
 	return true
 
 
-static func load(path: String) -> Dictionary:
+static func load_maze(path: String) -> Dictionary:
 
 	if !FileAccess.file_exists(path):
 		push_error("Maze file not found: " + path)
@@ -81,10 +119,23 @@ static func load(path: String) -> Dictionary:
 
 	var json := JSON.new()
 
-	var err := json.parse(text)
-
-	if err != OK:
+	if json.parse(text) != OK:
 		push_error("Invalid maze JSON.")
 		return {}
 
-	return json.data
+	var data: Dictionary = json.data
+
+	if data.has("grid"):
+		var grid: Array = data["grid"]
+
+		for row in range(grid.size()):
+			for col in range(grid[row].size()):
+				var pit = grid[row][col]["pit_destination"]
+
+				if pit != null and pit is Dictionary:
+					grid[row][col]["pit_destination"] = Vector2i(
+						int(pit["x"]),
+						int(pit["y"])
+					)
+
+	return data

@@ -1,5 +1,7 @@
 [gd_scene format=3 uid="uid://bjtk22ylt51uj"]
 
+[ext_resource type="Script" uid="uid://2sh3mb75vrb8" path="res://Scripts/maze_row.gd" id="1_4h6mn"]
+
 [node name="MazeRow" type="HBoxContainer" unique_id=382238219]
 custom_minimum_size = Vector2(0, 50)
 anchors_preset = 15
@@ -7,6 +9,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+script = ExtResource("1_4h6mn")
 
 [node name="MazeName" type="Label" parent="." unique_id=564804351]
 layout_mode = 2

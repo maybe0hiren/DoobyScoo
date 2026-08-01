@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://bpw4vc24hknjf"]
+
+[ext_resource type="Script" uid="uid://f4a3ophogbp5" path="res://Scripts/MazeSession.gd" id="1_eroxj"]
+
+[node name="Node" type="Node" unique_id=1092354132]
+script = ExtResource("1_eroxj")

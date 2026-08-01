@@ -15,6 +15,10 @@ run/main_scene="uid://dkba1is3xv0tu"
 config/features=PackedStringArray("4.6", "GL Compatibility")
 config/icon="res://icon.svg"
 
+[autoload]
+
+MazeSession="*uid://f4a3ophogbp5"
+
 [physics]
 
 3d/physics_engine="Jolt Physics"
