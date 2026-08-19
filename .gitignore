@@ -39,3 +39,8 @@ desktop.ini
 
 #Assets
 Assets
+
+
+#python
+.obsidian/
+*.env
