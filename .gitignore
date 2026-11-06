@@ -44,3 +44,7 @@ Assets
 #python
 .obsidian/
 *.env
+
+#RL
+*.pt
+doobyscoo-agent/maps

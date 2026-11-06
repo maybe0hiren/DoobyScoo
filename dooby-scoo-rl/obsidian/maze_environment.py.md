@@ -1,1 +1,0 @@
-Creates an environment out of the maze's .json file for the RL agent to learn. 
