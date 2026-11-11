@@ -5,8 +5,12 @@
 [ext_resource type="Script" uid="uid://c86h8d8anr2oe" path="res://Scripts/grid_map.gd" id="2_gheom"]
 
 [sub_resource type="LabelSettings" id="LabelSettings_n5lbb"]
-font_size = 44
-font_color = Color(0, 0, 0, 1)
+font_size = 38
+font_color = Color(0.12, 0.16, 0.12, 1)
+
+[sub_resource type="LabelSettings" id="LabelSettings_counts"]
+font_size = 18
+font_color = Color(0.15, 0.22, 0.15, 1)
 
 [node name="MapEditorPage" type="Control" unique_id=1632855231]
 layout_mode = 3
@@ -42,68 +46,78 @@ metadata/_edit_group_ = true
 
 [node name="Inventory" type="VBoxContainer" parent="HBoxContainer" unique_id=1361154007]
 layout_mode = 2
+theme_override_constants/separation = 8
 
 [node name="Label" type="Label" parent="HBoxContainer/Inventory" unique_id=505817056]
-custom_minimum_size = Vector2(100, 50)
+custom_minimum_size = Vector2(100, 44)
 layout_mode = 2
-text = "Inventory"
+text = "Maze Tools"
 label_settings = SubResource("LabelSettings_n5lbb")
 horizontal_alignment = 1
 vertical_alignment = 1
 uppercase = true
 
-[node name="Start" type="Button" parent="HBoxContainer/Inventory" unique_id=1685514787]
-custom_minimum_size = Vector2(400, 30)
+[node name="CountsLabel" type="Label" parent="HBoxContainer/Inventory" unique_id=505817057]
 layout_mode = 2
-theme_override_font_sizes/font_size = 40
-text = "Start"
+text = "Start: 0/1 | End: 0/2 | Bones: 0/5"
+label_settings = SubResource("LabelSettings_counts")
+horizontal_alignment = 1
+
+[node name="Start" type="Button" parent="HBoxContainer/Inventory" unique_id=1685514787]
+custom_minimum_size = Vector2(360, 30)
+layout_mode = 2
+theme_override_font_sizes/font_size = 32
+text = "Start (Dog Spawn)"
 
 [node name="End" type="Button" parent="HBoxContainer/Inventory" unique_id=272548928]
-custom_minimum_size = Vector2(400, 30)
+custom_minimum_size = Vector2(360, 30)
 layout_mode = 2
-theme_override_font_sizes/font_size = 40
-text = "End"
+theme_override_font_sizes/font_size = 32
+text = "End (Goal Flag)"
 
 [node name="Pit" type="Button" parent="HBoxContainer/Inventory" unique_id=675291691]
-custom_minimum_size = Vector2(400, 30)
+custom_minimum_size = Vector2(360, 30)
 layout_mode = 2
-theme_override_font_sizes/font_size = 40
-text = "Pit"
+theme_override_font_sizes/font_size = 32
+text = "Pit (Drag to Target)"
 
 [node name="Bone" type="Button" parent="HBoxContainer/Inventory" unique_id=312885082]
-custom_minimum_size = Vector2(400, 30)
+custom_minimum_size = Vector2(360, 30)
 layout_mode = 2
-theme_override_font_sizes/font_size = 40
-text = "Bone"
+theme_override_font_sizes/font_size = 32
+text = "Bone (+Score)"
 
 [node name="HSeparator" type="HSeparator" parent="HBoxContainer/Inventory" unique_id=43853860]
 layout_mode = 2
 
 [node name="Save" type="Button" parent="HBoxContainer/Inventory" unique_id=750125412]
-custom_minimum_size = Vector2(400, 30)
+custom_minimum_size = Vector2(360, 30)
 layout_mode = 2
-theme_override_font_sizes/font_size = 40
-text = "Save"
+theme_override_font_sizes/font_size = 32
+text = "Save Maze"
 
 [node name="Train" type="Button" parent="HBoxContainer/Inventory" unique_id=2120237274]
 custom_minimum_size = Vector2(0, 30)
 layout_mode = 2
-theme_override_font_sizes/font_size = 40
-text = "Train"
+theme_override_font_sizes/font_size = 32
+text = "Train / Play Dog"
 
 [node name="Home" type="Button" parent="HBoxContainer/Inventory" unique_id=1521754950]
 layout_mode = 2
-theme_override_font_sizes/font_size = 40
+theme_override_font_sizes/font_size = 32
 text = "Home"
 
 [node name="SaveDialog" type="ConfirmationDialog" parent="." unique_id=493853103]
+title = "Save Maze"
+size = Vector2i(360, 200)
 
 [node name="VBoxContainer" type="VBoxContainer" parent="SaveDialog" unique_id=106087457]
-offset_right = 40.0
-offset_bottom = 40.0
+offset_right = 320.0
+offset_bottom = 120.0
 
 [node name="Label" type="Label" parent="SaveDialog/VBoxContainer" unique_id=853910826]
 layout_mode = 2
+text = "Maze Name:"
 
 [node name="MazeName" type="LineEdit" parent="SaveDialog/VBoxContainer" unique_id=1151806399]
 layout_mode = 2
@@ -111,14 +125,17 @@ placeholder_text = "Enter Maze Name..."
 
 [node name="Label2" type="Label" parent="SaveDialog/VBoxContainer" unique_id=1866803853]
 layout_mode = 2
+text = "Author / Player:"
 
 [node name="UserName" type="LineEdit" parent="SaveDialog/VBoxContainer" unique_id=2013578141]
 layout_mode = 2
 placeholder_text = "Enter Username..."
 
 [node name="ErrorDialog" type="AcceptDialog" parent="." unique_id=23891184]
+title = "Validation Notice"
 
 [node name="SuccessDialog" type="AcceptDialog" parent="." unique_id=2049035648]
+title = "Saved"
 
 [node name="UnsavedChangesDialog" type="AcceptDialog" parent="." unique_id=311145949]
 title = "Unsaved Changes"
@@ -130,6 +147,7 @@ What would you like to do?"
 [connection signal="pressed" from="HBoxContainer/Inventory/Pit" to="." method="_on_pit_pressed"]
 [connection signal="pressed" from="HBoxContainer/Inventory/Bone" to="." method="_on_bone_pressed"]
 [connection signal="pressed" from="HBoxContainer/Inventory/Save" to="." method="_on_save_pressed"]
+[connection signal="pressed" from="HBoxContainer/Inventory/Train" to="." method="_on_train_pressed"]
 [connection signal="pressed" from="HBoxContainer/Inventory/Home" to="." method="_on_home_pressed"]
 [connection signal="confirmed" from="SaveDialog" to="." method="_on_save_dialog_confirmed"]
 [connection signal="custom_action" from="UnsavedChangesDialog" to="." method="_on_unsaved_changes_dialog_custom_action"]

@@ -9,171 +9,161 @@ const PIT := 3
 const BONE := 4
 
 
-static func is_solvable(grid:Array) -> Dictionary:
+static func _extract_coords(destination) -> Vector2i:
+	if destination is Vector2i:
+		return destination
+	if destination is Dictionary and destination.has("x") and destination.has("y"):
+		return Vector2i(int(destination["x"]), int(destination["y"]))
+	if destination is Array and destination.size() >= 2:
+		return Vector2i(int(destination[0]), int(destination[1]))
+	return Vector2i(-1, -1)
 
-	var rows :int = grid.size()
 
+static func is_solvable(grid: Array) -> Dictionary:
+	var rows: int = grid.size()
 	if rows == 0:
 		return {
 			"success": false,
 			"path_length": -1,
-			"error":"Grid is empty."
+			"error": "Grid is empty."
 		}
 
-	var cols : int = grid[0].size()
-
-	var start := Vector2i(-1,-1)
-
-	var end_positions:Array[Vector2i] = []
-	var bone_positions:Array[Vector2i] = []
+	var cols: int = grid[0].size()
+	var start := Vector2i(-1, -1)
+	var end_positions: Array[Vector2i] = []
+	var bone_positions: Array[Vector2i] = []
 
 	for y in range(rows):
 		for x in range(cols):
-
-			match grid[y][x]["element"]:
-
+			match int(grid[y][x]["element"]):
 				START:
-					start = Vector2i(x,y)
-
+					start = Vector2i(x, y)
 				END:
-					end_positions.append(Vector2i(x,y))
-
+					end_positions.append(Vector2i(x, y))
 				BONE:
-					bone_positions.append(Vector2i(x,y))
+					bone_positions.append(Vector2i(x, y))
 
 	if start.x == -1:
 		return {
-			"success":false,
-			"path_length":-1,
-			"error":"No Start found."
+			"success": false,
+			"path_length": -1,
+			"error": "No Start found."
 		}
 
-	var queue:Array = []
+	if end_positions.is_empty():
+		return {
+			"success": false,
+			"path_length": -1,
+			"error": "No End found."
+		}
+
+	var queue: Array = []
 	var visited := {}
+	var distances := {}
 
 	queue.append({
-		"position":start,
-		"distance":0
+		"position": start,
+		"distance": 0
 	})
-
-	visited[start]=true
+	visited[start] = true
+	distances[start] = 0
 
 	var reachable := {}
 
 	while !queue.is_empty():
-
 		var current = queue.pop_front()
+		var pos: Vector2i = current["position"]
+		var distance: int = current["distance"]
 
-		var pos:Vector2i = current["position"]
-		var distance:int = current["distance"]
-
-		reachable[pos]=true
-
+		reachable[pos] = true
 		var row := pos.y
 		var col := pos.x
-
 		var cell = grid[row][col]
 
-		if !cell["top"]:
-			_add_neighbor(Vector2i(col,row-1),distance+1,grid,queue,visited)
+		if !bool(cell["top"]) and row > 0 and !bool(grid[row - 1][col]["bottom"]):
+			_add_neighbor(Vector2i(col, row - 1), distance + 1, grid, queue, visited, distances)
 
-		if !cell["bottom"]:
-			_add_neighbor(Vector2i(col,row+1),distance+1,grid,queue,visited)
+		if !bool(cell["bottom"]) and row < rows - 1 and !bool(grid[row + 1][col]["top"]):
+			_add_neighbor(Vector2i(col, row + 1), distance + 1, grid, queue, visited, distances)
 
-		if !cell["left"]:
-			_add_neighbor(Vector2i(col-1,row),distance+1,grid,queue,visited)
+		if !bool(cell["left"]) and col > 0 and !bool(grid[row][col - 1]["right"]):
+			_add_neighbor(Vector2i(col - 1, row), distance + 1, grid, queue, visited, distances)
 
-		if !cell["right"]:
-			_add_neighbor(Vector2i(col+1,row),distance+1,grid,queue,visited)
-
-	# -----------------------
-	# Every bone reachable?
-	# -----------------------
+		if !bool(cell["right"]) and col < cols - 1 and !bool(grid[row][col + 1]["left"]):
+			_add_neighbor(Vector2i(col + 1, row), distance + 1, grid, queue, visited, distances)
 
 	for bone in bone_positions:
-
 		if !reachable.has(bone):
-
 			return {
-				"success":false,
-				"path_length":-1,
-				"error":"A Bone is unreachable."
+				"success": false,
+				"path_length": -1,
+				"error": "A Bone is unreachable."
 			}
 
-	# -----------------------
-	# At least one End reachable?
-	# -----------------------
-
 	var end_found := false
+	var shortest_end_dist := 999999
 
 	for e in end_positions:
-
 		if reachable.has(e):
 			end_found = true
-			break
+			if distances.has(e) and distances[e] < shortest_end_dist:
+				shortest_end_dist = distances[e]
 
 	if !end_found:
-
 		return {
-			"success":false,
-			"path_length":-1,
-			"error":"No End is reachable."
+			"success": false,
+			"path_length": -1,
+			"error": "No End is reachable."
 		}
 
 	return {
-		"success":true,
-		"path_length":reachable.size(),
-		"error":""
+		"success": true,
+		"path_length": shortest_end_dist,
+		"reachable_cells": reachable.size(),
+		"error": ""
 	}
 
 
 static func _add_neighbor(
-	position:Vector2i,
-	distance:int,
-	grid:Array,
-	queue:Array,
-	visited:Dictionary
-)->void:
+	position: Vector2i,
+	distance: int,
+	grid: Array,
+	queue: Array,
+	visited: Dictionary,
+	distances: Dictionary
+) -> void:
+	var rows: int = grid.size()
+	var cols: int = grid[0].size()
 
-	var rows : int = grid.size()
-	var cols : int = grid[0].size()
-
-	if position.x<0 or position.x>=cols:
+	if position.x < 0 or position.x >= cols:
 		return
-
-	if position.y<0 or position.y>=rows:
+	if position.y < 0 or position.y >= rows:
 		return
 
 	var destination := position
-
 	var pit_chain := {}
 
-	while grid[destination.y][destination.x]["element"] == PIT:
-
+	while int(grid[destination.y][destination.x]["element"]) == PIT:
 		if pit_chain.has(destination):
 			return
+		pit_chain[destination] = true
 
-		pit_chain[destination]=true
-
-		var next = grid[destination.y][destination.x]["pit_destination"]
-
-		if next==null:
+		var next_raw = grid[destination.y][destination.x]["pit_destination"]
+		if next_raw == null:
 			return
-
-		if next.x<0 or next.x>=cols:
+		var next_vec := _extract_coords(next_raw)
+		if next_vec.x < 0 or next_vec.x >= cols:
 			return
-
-		if next.y<0 or next.y>=rows:
+		if next_vec.y < 0 or next_vec.y >= rows:
 			return
-
-		destination = next
+		destination = next_vec
 
 	if visited.has(destination):
 		return
 
-	visited[destination]=true
-
+	visited[destination] = true
+	distances[destination] = distance
 	queue.append({
-		"position":destination,
-		"distance":distance
+		"position": destination,
+		"distance": distance
 	})

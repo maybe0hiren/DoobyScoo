@@ -1,17 +1,25 @@
 extends HBoxContainer
 
-
+signal play_requested(path: String)
 signal edit_requested(path: String)
 signal delete_requested(path: String)
 
-var maze_path: String = "";
+var maze_path: String = ""
+
+@onready var play_button: Button = get_node_or_null("HBoxContainer/Play")
 @onready var edit_button: Button = $HBoxContainer/Edit
 @onready var delete_button: Button = $HBoxContainer/Delete
 
 
 func _ready() -> void:
+	if play_button != null:
+		play_button.pressed.connect(_on_play_pressed)
 	edit_button.pressed.connect(_on_edit_pressed)
 	delete_button.pressed.connect(_on_delete_pressed)
+
+
+func _on_play_pressed() -> void:
+	play_requested.emit(maze_path)
 
 
 func _on_edit_pressed() -> void:

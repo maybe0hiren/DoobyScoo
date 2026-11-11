@@ -45,6 +45,11 @@ Assets
 .obsidian/
 *.env
 
-#RL
+# RL artifacts
 *.pt
-doobyscoo-agent/maps
+# ignore generated/play maps only
+doobyscoo-agent/maps/played/
+# ignore Python virtual env
+doobyscoo-agent/.venv/
+__pycache__/
+*.pyc

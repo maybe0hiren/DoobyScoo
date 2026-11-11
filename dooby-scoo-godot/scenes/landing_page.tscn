@@ -3,6 +3,7 @@
 [ext_resource type="Script" uid="uid://blb82yiiek08r" path="res://Scripts/landing_page.gd" id="1_ps000"]
 [ext_resource type="Texture2D" uid="uid://nhaw43buishn" path="res://assets/backgroundImages/mainBG.png" id="1_yfpfs"]
 [ext_resource type="StyleBox" uid="uid://dnh01j62lykjt" path="res://Themes/simpleButton.tres" id="3_nftrr"]
+[ext_resource type="Script" path="res://Scripts/DogController.gd" id="4_dog"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_nftrr"]
 bg_color = Color(0, 0, 0, 0.6156863)
@@ -12,6 +13,21 @@ corner_radius_bottom_right = 60
 corner_radius_bottom_left = 60
 shadow_size = 2
 shadow_offset = Vector2(6.69, 5.405)
+
+[sub_resource type="LabelSettings" id="LabelSettings_title"]
+font_size = 68
+font_color = Color(1, 0.96, 0.82, 1)
+outline_size = 12
+outline_color = Color(0.24, 0.14, 0.06, 1)
+shadow_size = 6
+shadow_color = Color(0, 0, 0, 0.45)
+shadow_offset = Vector2(4, 4)
+
+[sub_resource type="LabelSettings" id="LabelSettings_subtitle"]
+font_size = 24
+font_color = Color(0.98, 0.98, 1, 1)
+outline_size = 6
+outline_color = Color(0.14, 0.22, 0.32, 1)
 
 [node name="LandingPage" type="Node2D" unique_id=991402344]
 script = ExtResource("1_ps000")
@@ -24,43 +40,62 @@ offset_bottom = 648.0
 texture = ExtResource("1_yfpfs")
 expand_mode = 1
 
-[node name="Panel" type="Panel" parent="." unique_id=1740933251]
-offset_left = 355.0
-offset_top = 470.0
-offset_right = 735.0
-offset_bottom = 546.0
-theme_override_styles/panel = SubResource("StyleBoxFlat_nftrr")
-metadata/_edit_group_ = true
+[node name="TitleLabel" type="Label" parent="." unique_id=991402345]
+offset_left = 200.0
+offset_top = 34.0
+offset_right = 900.0
+offset_bottom = 130.0
+text = "DOOBY SCOO"
+label_settings = SubResource("LabelSettings_title")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="SubtitleLabel" type="Label" parent="." unique_id=991402346]
+offset_left = 200.0
+offset_top = 122.0
+offset_right = 900.0
+offset_bottom = 165.0
+text = "Build Mazes & Train Your AI Dog!"
+label_settings = SubResource("LabelSettings_subtitle")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="MascotDog" type="Node2D" parent="." unique_id=991402347]
+position = Vector2(546, 240)
+scale = Vector2(2.6, 2.6)
+script = ExtResource("4_dog")
 
 [node name="Panel2" type="Panel" parent="." unique_id=134487511]
 offset_left = 355.0
-offset_top = 365.875
-offset_right = 734.9999
-offset_bottom = 441.87473
+offset_top = 320.0
+offset_right = 735.0
+offset_bottom = 396.0
 theme_override_styles/panel = SubResource("StyleBoxFlat_nftrr")
 metadata/_edit_group_ = true
 
-[node name="NewMapButton" type="Button" parent="." unique_id=2028949283]
-offset_left = 356.0
-offset_top = 470.0
-offset_right = 737.0
-offset_bottom = 546.0
-theme_override_colors/font_color = Color(1, 1, 1, 1)
-theme_override_font_sizes/font_size = 31
-theme_override_styles/normal = ExtResource("3_nftrr")
-theme_override_styles/pressed = ExtResource("3_nftrr")
-theme_override_styles/hover = ExtResource("3_nftrr")
-theme_override_styles/focus = ExtResource("3_nftrr")
-text = "Make New Map"
+[node name="Panel" type="Panel" parent="." unique_id=1740933251]
+offset_left = 355.0
+offset_top = 415.0
+offset_right = 735.0
+offset_bottom = 491.0
+theme_override_styles/panel = SubResource("StyleBoxFlat_nftrr")
+metadata/_edit_group_ = true
+
+[node name="Panel3" type="Panel" parent="." unique_id=1740933252]
+offset_left = 355.0
+offset_top = 510.0
+offset_right = 735.0
+offset_bottom = 586.0
+theme_override_styles/panel = SubResource("StyleBoxFlat_nftrr")
 metadata/_edit_group_ = true
 
 [node name="MyMapsButton" type="Button" parent="." unique_id=1042898809]
 offset_left = 355.0
-offset_top = 366.0
+offset_top = 320.0
 offset_right = 736.0
-offset_bottom = 442.0
+offset_bottom = 396.0
 theme_override_colors/font_color = Color(1, 1, 1, 1)
-theme_override_font_sizes/font_size = 31
+theme_override_font_sizes/font_size = 30
 theme_override_styles/normal = ExtResource("3_nftrr")
 theme_override_styles/pressed = ExtResource("3_nftrr")
 theme_override_styles/hover = ExtResource("3_nftrr")
@@ -68,7 +103,36 @@ theme_override_styles/focus = ExtResource("3_nftrr")
 text = "My Maps"
 metadata/_edit_group_ = true
 
+[node name="NewMapButton" type="Button" parent="." unique_id=2028949283]
+offset_left = 356.0
+offset_top = 415.0
+offset_right = 737.0
+offset_bottom = 491.0
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 30
+theme_override_styles/normal = ExtResource("3_nftrr")
+theme_override_styles/pressed = ExtResource("3_nftrr")
+theme_override_styles/hover = ExtResource("3_nftrr")
+theme_override_styles/focus = ExtResource("3_nftrr")
+text = "Create Maze"
+metadata/_edit_group_ = true
+
+[node name="PlayButton" type="Button" parent="." unique_id=2028949284]
+offset_left = 356.0
+offset_top = 510.0
+offset_right = 737.0
+offset_bottom = 586.0
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 30
+theme_override_styles/normal = ExtResource("3_nftrr")
+theme_override_styles/pressed = ExtResource("3_nftrr")
+theme_override_styles/hover = ExtResource("3_nftrr")
+theme_override_styles/focus = ExtResource("3_nftrr")
+text = "Play / Train Dog"
+metadata/_edit_group_ = true
+
 [connection signal="button_down" from="NewMapButton" to="." method="_on_new_map_button_button_down"]
 [connection signal="button_up" from="NewMapButton" to="." method="_on_new_map_button_button_up"]
 [connection signal="button_down" from="MyMapsButton" to="." method="_on_my_maps_button_button_down"]
 [connection signal="button_up" from="MyMapsButton" to="." method="_on_my_maps_button_button_up"]
+[connection signal="pressed" from="PlayButton" to="." method="_on_play_button_pressed"]

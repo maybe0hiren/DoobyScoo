@@ -1,0 +1,273 @@
+[gd_scene format=3 uid="uid://d2gameplay001"]
+
+[ext_resource type="Script" path="res://Scripts/GameplayManager.gd" id="1_gm"]
+[ext_resource type="Texture2D" uid="uid://nhaw43buishn" path="res://assets/backgroundImages/mainBG.png" id="2_bg"]
+[ext_resource type="Script" path="res://Scripts/GameplayBoard.gd" id="3_board"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
+bg_color = Color(0.13, 0.19, 0.15, 0.92)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.95, 0.85, 0.55, 1)
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
+
+[node name="GameplayPage" type="Control" unique_id=19001001]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_gm")
+
+[node name="BG" type="TextureRect" parent="." unique_id=19001002]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+texture = ExtResource("2_bg")
+expand_mode = 1
+
+[node name="MainHBox" type="HBoxContainer" parent="." unique_id=19001003]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 16.0
+offset_top = 12.0
+offset_right = -16.0
+offset_bottom = -12.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 16
+
+[node name="BoardContainer" type="CenterContainer" parent="MainHBox" unique_id=19001004]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="GameplayBoard" type="Control" parent="MainHBox/BoardContainer" unique_id=19001005]
+custom_minimum_size = Vector2(600, 600)
+layout_mode = 2
+script = ExtResource("3_board")
+
+[node name="SidePanel" type="PanelContainer" parent="MainHBox" unique_id=19001006]
+custom_minimum_size = Vector2(460, 0)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
+
+[node name="PanelMargin" type="MarginContainer" parent="MainHBox/SidePanel" unique_id=19001007]
+layout_mode = 2
+theme_override_constants/margin_left = 18
+theme_override_constants/margin_top = 16
+theme_override_constants/margin_right = 18
+theme_override_constants/margin_bottom = 16
+
+[node name="VBox" type="VBoxContainer" parent="MainHBox/SidePanel/PanelMargin" unique_id=19001008]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="MazeTitleLabel" type="Label" parent="MainHBox/SidePanel/PanelMargin/VBox" unique_id=19001009]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.94, 0.72, 1)
+theme_override_font_sizes/font_size = 26
+text = "Maze: Starter Meadow Run"
+
+[node name="ServerStatusLabel" type="Label" parent="MainHBox/SidePanel/PanelMargin/VBox" unique_id=19001010]
+layout_mode = 2
+theme_override_font_sizes/font_size = 15
+text = "Python RL: Checking connection..."
+
+[node name="HSeparator1" type="HSeparator" parent="MainHBox/SidePanel/PanelMargin/VBox" unique_id=19001011]
+layout_mode = 2
+
+[node name="ModeRow" type="HBoxContainer" parent="MainHBox/SidePanel/PanelMargin/VBox" unique_id=19001012]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="ModeLabel" type="Label" parent="MainHBox/SidePanel/PanelMargin/VBox/ModeRow" unique_id=19001013]
+layout_mode = 2
+text = "Mode:"
+
+[node name="ModeSelect" type="OptionButton" parent="MainHBox/SidePanel/PanelMargin/VBox/ModeRow" unique_id=19001014]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="OptionsRow" type="HBoxContainer" parent="MainHBox/SidePanel/PanelMargin/VBox" unique_id=19001015]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="DeterministicCheck" type="CheckBox" parent="MainHBox/SidePanel/PanelMargin/VBox/OptionsRow" unique_id=19001016]
+layout_mode = 2
+text = "Deterministic Policy"
+
+[node name="CollectExpCheck" type="CheckBox" parent="MainHBox/SidePanel/PanelMargin/VBox/OptionsRow" unique_id=19001017]
+layout_mode = 2
+button_pressed = true
+text = "Continuous Learning"
+
+[node name="HSeparator2" type="HSeparator" parent="MainHBox/SidePanel/PanelMargin/VBox" unique_id=19001018]
+layout_mode = 2
+
+[node name="StatsGrid" type="GridContainer" parent="MainHBox/SidePanel/PanelMargin/VBox" unique_id=19001019]
+layout_mode = 2
+theme_override_constants/h_separation = 16
+theme_override_constants/v_separation = 8
+columns = 2
+
+[node name="StepsCaption" type="Label" parent="MainHBox/SidePanel/PanelMargin/VBox/StatsGrid" unique_id=19001020]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 20
+text = "Steps Taken:"
+
+[node name="StepsValue" type="Label" parent="MainHBox/SidePanel/PanelMargin/VBox/StatsGrid" unique_id=19001021]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 22
+text = "0"
+
+[node name="BonesCaption" type="Label" parent="MainHBox/SidePanel/PanelMargin/VBox/StatsGrid" unique_id=19001022]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 20
+text = "Bones Collected (-5 each):"
+
+[node name="BonesValue" type="Label" parent="MainHBox/SidePanel/PanelMargin/VBox/StatsGrid" unique_id=19001023]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.9, 0.4, 1)
+theme_override_font_sizes/font_size = 22
+text = "0 / 5"
+
+[node name="ScoreCaption" type="Label" parent="MainHBox/SidePanel/PanelMargin/VBox/StatsGrid" unique_id=19001024]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 20
+text = "Current Score (Lower = Better):"
+
+[node name="ScoreValue" type="Label" parent="MainHBox/SidePanel/PanelMargin/VBox/StatsGrid" unique_id=19001025]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.45, 0.98, 0.62, 1)
+theme_override_font_sizes/font_size = 24
+text = "0"
+
+[node name="StatusCaption" type="Label" parent="MainHBox/SidePanel/PanelMargin/VBox/StatsGrid" unique_id=19001026]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 20
+text = "Gameplay Status:"
+
+[node name="StatusValue" type="Label" parent="MainHBox/SidePanel/PanelMargin/VBox/StatsGrid" unique_id=19001027]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.65, 0.9, 1, 1)
+theme_override_font_sizes/font_size = 20
+text = "Ready"
+
+[node name="ActionLogLabel" type="Label" parent="MainHBox/SidePanel/PanelMargin/VBox" unique_id=19001028]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.9, 0.94, 0.9, 1)
+theme_override_font_sizes/font_size = 15
+text = "Waiting to start..."
+autowrap_mode = 2
+
+[node name="SpeedRow" type="HBoxContainer" parent="MainHBox/SidePanel/PanelMargin/VBox" unique_id=19001029]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="SpeedLabel" type="Label" parent="MainHBox/SidePanel/PanelMargin/VBox/SpeedRow" unique_id=19001030]
+layout_mode = 2
+text = "Dog Speed:"
+
+[node name="SpeedSlider" type="HSlider" parent="MainHBox/SidePanel/PanelMargin/VBox/SpeedRow" unique_id=19001031]
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 0.1
+max_value = 1.0
+step = 0.05
+value = 0.75
+
+[node name="ControlsRow1" type="HBoxContainer" parent="MainHBox/SidePanel/PanelMargin/VBox" unique_id=19001032]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="AutoPlayButton" type="Button" parent="MainHBox/SidePanel/PanelMargin/VBox/ControlsRow1" unique_id=19001033]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 20
+text = "Start Auto-Play"
+
+[node name="StepButton" type="Button" parent="MainHBox/SidePanel/PanelMargin/VBox/ControlsRow1" unique_id=19001034]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 20
+text = "Single Step"
+
+[node name="ControlsRow2" type="HBoxContainer" parent="MainHBox/SidePanel/PanelMargin/VBox" unique_id=19001035]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="ResetButton" type="Button" parent="MainHBox/SidePanel/PanelMargin/VBox/ControlsRow2" unique_id=19001036]
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 18
+text = "Reset Episode"
+
+[node name="LearnButton" type="Button" parent="MainHBox/SidePanel/PanelMargin/VBox/ControlsRow2" unique_id=19001037]
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 18
+text = "Update RL Policy Now"
+
+[node name="HSeparator3" type="HSeparator" parent="MainHBox/SidePanel/PanelMargin/VBox" unique_id=19001038]
+layout_mode = 2
+
+[node name="NavRow" type="HBoxContainer" parent="MainHBox/SidePanel/PanelMargin/VBox" unique_id=19001039]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="EditMazeButton" type="Button" parent="MainHBox/SidePanel/PanelMargin/VBox/NavRow" unique_id=19001040]
+custom_minimum_size = Vector2(0, 38)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Edit Maze"
+
+[node name="MyMapsButton" type="Button" parent="MainHBox/SidePanel/PanelMargin/VBox/NavRow" unique_id=19001041]
+custom_minimum_size = Vector2(0, 38)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "My Maps"
+
+[node name="HomeButton" type="Button" parent="MainHBox/SidePanel/PanelMargin/VBox/NavRow" unique_id=19001042]
+custom_minimum_size = Vector2(0, 38)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Home"
+
+[node name="ResultDialog" type="AcceptDialog" parent="." unique_id=19001043]
+title = "Episode Complete"
+
+[node name="ConnectionDialog" type="ConfirmationDialog" parent="." unique_id=19001044]
+title = "Python RL Service Not Detected"
+
+[connection signal="item_selected" from="MainHBox/SidePanel/PanelMargin/VBox/ModeRow/ModeSelect" to="." method="_on_mode_select_item_selected"]
+[connection signal="value_changed" from="MainHBox/SidePanel/PanelMargin/VBox/SpeedRow/SpeedSlider" to="." method="_on_speed_slider_value_changed"]
+[connection signal="pressed" from="MainHBox/SidePanel/PanelMargin/VBox/ControlsRow1/AutoPlayButton" to="." method="_on_auto_play_button_pressed"]
+[connection signal="pressed" from="MainHBox/SidePanel/PanelMargin/VBox/ControlsRow1/StepButton" to="." method="_on_step_button_pressed"]
+[connection signal="pressed" from="MainHBox/SidePanel/PanelMargin/VBox/ControlsRow2/ResetButton" to="." method="_on_reset_button_pressed"]
+[connection signal="pressed" from="MainHBox/SidePanel/PanelMargin/VBox/ControlsRow2/LearnButton" to="." method="_on_learn_button_pressed"]
+[connection signal="pressed" from="MainHBox/SidePanel/PanelMargin/VBox/NavRow/EditMazeButton" to="." method="_on_edit_maze_button_pressed"]
+[connection signal="pressed" from="MainHBox/SidePanel/PanelMargin/VBox/NavRow/MyMapsButton" to="." method="_on_my_maps_button_pressed"]
+[connection signal="pressed" from="MainHBox/SidePanel/PanelMargin/VBox/NavRow/HomeButton" to="." method="_on_home_button_pressed"]
+[connection signal="confirmed" from="ConnectionDialog" to="." method="_on_connection_dialog_confirmed"]
+

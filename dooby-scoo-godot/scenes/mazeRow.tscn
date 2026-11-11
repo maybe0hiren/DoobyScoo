@@ -9,27 +9,53 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+theme_override_constants/separation = 16
 script = ExtResource("1_4h6mn")
 
 [node name="MazeName" type="Label" parent="." unique_id=564804351]
 layout_mode = 2
 size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.1, 0.14, 0.1, 1)
+theme_override_font_sizes/font_size = 20
 text = "Maze Name"
+
+[node name="AuthorLabel" type="Label" parent="." unique_id=564804352]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.18, 0.22, 0.18, 1)
+theme_override_font_sizes/font_size = 18
+text = "Player"
+
+[node name="GridSizeLabel" type="Label" parent="." unique_id=564804353]
+custom_minimum_size = Vector2(90, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.18, 0.22, 0.18, 1)
+theme_override_font_sizes/font_size = 18
+text = "10x10"
 
 [node name="LastModified" type="Label" parent="." unique_id=568470801]
 layout_mode = 2
 size_flags_horizontal = 3
-text = "123"
+theme_override_colors/font_color = Color(0.22, 0.26, 0.22, 1)
+theme_override_font_sizes/font_size = 17
+text = "2026-11-11"
 
 [node name="HBoxContainer" type="HBoxContainer" parent="." unique_id=11429392]
 layout_mode = 2
 size_flags_horizontal = 8
-theme_override_constants/separation = 12
+theme_override_constants/separation = 10
+
+[node name="Play" type="Button" parent="HBoxContainer" unique_id=1297271574]
+custom_minimum_size = Vector2(110, 36)
+layout_mode = 2
+text = "Play / Train"
 
 [node name="Edit" type="Button" parent="HBoxContainer" unique_id=1297271575]
+custom_minimum_size = Vector2(80, 36)
 layout_mode = 2
 text = "Edit"
 
 [node name="Delete" type="Button" parent="HBoxContainer" unique_id=383937474]
+custom_minimum_size = Vector2(80, 36)
 layout_mode = 2
 text = "Delete"
