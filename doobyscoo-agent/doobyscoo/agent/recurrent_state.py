@@ -1,9 +1,13 @@
 import torch
 
-REL_DELTAS = ((0, -1), (0, 1), (-1, 0), (1, 0))
-
 
 class RecurrentState:
+    """LSTM memory (h, c) for one or more independent episodes.
+
+    A new RecurrentState (all zeros) must be created at every episode boundary;
+    it is carried unchanged between steps of the same episode.
+    """
+
     def __init__(self, hiddenSize=128, batchSize=1, device="cpu", h=None, c=None):
         self.hiddenSize = int(hiddenSize)
         self.batchSize = int(batchSize)
@@ -12,12 +16,6 @@ class RecurrentState:
         self.c = torch.zeros(self.batchSize, self.hiddenSize, device=device) if c is None else c
         self.stepCount = 0
         self.lastAction = None
-        self.segmentId = 0
-        self.pitEntryCount = 0
-        self.relPos = (0, 0)
-        self.visitCounts = {(0, 0, 0): 1}
-        self.edgeCounts = {}
-        self.recentActions = []
 
     @classmethod
     def fromTuple(cls, stateTuple):
@@ -31,44 +29,19 @@ class RecurrentState:
         self.c = torch.zeros(self.batchSize, self.hiddenSize, device=self.device)
         self.stepCount = 0
         self.lastAction = None
-        self.segmentId = 0
-        self.pitEntryCount = 0
-        self.relPos = (0, 0)
-        self.visitCounts = {(0, 0, 0): 1}
-        self.edgeCounts = {}
-        self.recentActions = []
         return self
 
-    def _copyMetadataTo(self, target):
-        target.stepCount = self.stepCount
-        target.lastAction = self.lastAction
-        target.segmentId = self.segmentId
-        target.pitEntryCount = self.pitEntryCount
-        target.relPos = self.relPos
-        target.visitCounts = dict(self.visitCounts)
-        target.edgeCounts = dict(self.edgeCounts)
-        target.recentActions = list(self.recentActions)
-        return target
+    def _withTensors(self, h, c):
+        out = RecurrentState(hiddenSize=self.hiddenSize, batchSize=self.batchSize, device=self.device, h=h, c=c)
+        out.stepCount = self.stepCount
+        out.lastAction = self.lastAction
+        return out
 
     def detach(self):
-        cloned = RecurrentState(
-            hiddenSize=self.hiddenSize,
-            batchSize=self.batchSize,
-            device=self.device,
-            h=self.h.detach(),
-            c=self.c.detach(),
-        )
-        return self._copyMetadataTo(cloned)
+        return self._withTensors(self.h.detach(), self.c.detach())
 
     def clone(self):
-        cloned = RecurrentState(
-            hiddenSize=self.hiddenSize,
-            batchSize=self.batchSize,
-            device=self.device,
-            h=self.h.clone(),
-            c=self.c.clone(),
-        )
-        return self._copyMetadataTo(cloned)
+        return self._withTensors(self.h.clone(), self.c.clone())
 
     def to(self, device):
         self.device = device
@@ -79,60 +52,8 @@ class RecurrentState:
     def asTuple(self):
         return (self.h, self.c)
 
-    def currentKey(self):
-        return (self.segmentId, self.relPos[0], self.relPos[1])
-
-    def neighborKey(self, action):
-        dx, dy = REL_DELTAS[int(action)]
-        return (self.segmentId, self.relPos[0] + dx, self.relPos[1] + dy)
-
-    def neighborVisitFeatures(self):
-        feats = []
-        cur = self.currentKey()
-        for a in range(4):
-            nKey = self.neighborKey(a)
-            visits = self.visitCounts.get(nKey, 0)
-            edges = self.edgeCounts.get((cur, a), 0)
-            feats.append(min(1.0, float(visits + edges) / 4.0))
-        return feats
-
-    def directionalMemoryMatrix(self, oppositeActions=(1, 0, 3, 2)):
-        rows = []
-        cur = self.currentKey()
-        pitFirst = 1.0 if self.pitEntryCount == 0 else 0.0
-        pitRepeat = 1.0 if self.pitEntryCount > 0 else 0.0
-        for a in range(4):
-            nKey = self.neighborKey(a)
-            visits = min(6.0, float(self.visitCounts.get(nKey, 0))) / 3.0
-            edges = min(6.0, float(self.edgeCounts.get((cur, a), 0))) / 3.0
-            isRev = 1.0 if (self.lastAction is not None and oppositeActions[self.lastAction] == a) else 0.0
-            rows.append([pitFirst, pitRepeat, visits, edges, isRev])
-        return rows
-
-    def recordAction(self, observationTensor, action):
-        act = int(action)
-        cur = self.currentKey()
-        self.edgeCounts[(cur, act)] = self.edgeCounts.get((cur, act), 0) + 1
-
-        flat = observationTensor.detach().cpu().view(-1).tolist()
-        if len(flat) >= 4:
-            maxDir = max(abs(x) for x in flat[:4])
-            dirVal = flat[act] * 4.0 if maxDir <= 1.05 else flat[act]
-            if dirVal > 0.1:
-                if abs(dirVal - 4.0) < 0.25:
-                    self.pitEntryCount += 1
-                    self.segmentId = 1
-                    self.relPos = (0, 0)
-                else:
-                    dx, dy = REL_DELTAS[act]
-                    self.relPos = (self.relPos[0] + dx, self.relPos[1] + dy)
-
-        newKey = self.currentKey()
-        self.visitCounts[newKey] = self.visitCounts.get(newKey, 0) + 1
-        self.lastAction = act
-        self.recentActions.append(act)
-        if len(self.recentActions) > 16:
-            self.recentActions.pop(0)
+    def recordAction(self, observationTensor=None, action=None):
+        self.lastAction = None if action is None else int(action)
         self.stepCount += 1
 
     def __iter__(self):

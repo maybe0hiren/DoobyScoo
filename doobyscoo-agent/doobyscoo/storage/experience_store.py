@@ -8,17 +8,33 @@ class ExperienceStore:
     def __init__(self, playedMapsFolder="maps/played", excludedFolders=None, maxBufferEpisodes=64):
         self.playedMapsFolder = Path(playedMapsFolder)
         self.playedMapsFolder.mkdir(parents=True, exist_ok=True)
-        self.excludedFolders = [Path(f).resolve() for f in (excludedFolders or []) if f is not None]
+        defaultExcluded = ["maps/test", "maps/validation"]
+        if excludedFolders:
+            defaultExcluded.extend(excludedFolders)
+        self.excludedFolders = [Path(f).resolve() for f in defaultExcluded if f is not None]
+        self.excludedHashes = set()
         self.maxBufferEpisodes = int(maxBufferEpisodes)
         self.episodeBuffer = []
         self.totalRecordedEpisodes = 0
         self.mapPlayCounts = {}
         self.hashIndex = {}
+        self._indexExcludedHashes()
         self._indexExistingPlayedMaps()
 
     def _gridHash(self, mazeData):
         canonical = json.dumps(mazeData.get("grid", []), sort_keys=True)
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
+
+    def _indexExcludedHashes(self):
+        for ex in self.excludedFolders:
+            if ex.exists() and ex.is_dir():
+                for path in ex.rglob("*.json"):
+                    try:
+                        data = json.loads(path.read_text(encoding="utf-8"))
+                        if isinstance(data, dict) and "grid" in data:
+                            self.excludedHashes.add(self._gridHash(data))
+                    except Exception:
+                        continue
 
     def _isExcludedPath(self, path):
         if path is None:
@@ -27,6 +43,8 @@ class ExperienceStore:
         for excluded in self.excludedFolders:
             if resolved == excluded or excluded in resolved.parents:
                 return True
+        if "test" in resolved.parts or "validation" in resolved.parts:
+            return True
         return False
 
     def _indexExistingPlayedMaps(self):
@@ -35,7 +53,8 @@ class ExperienceStore:
                 data = json.loads(path.read_text(encoding="utf-8"))
                 if validateMaze(data)["valid"]:
                     gridHash = self._gridHash(data)
-                    self.hashIndex[gridHash] = path
+                    if gridHash not in self.excludedHashes:
+                        self.hashIndex[gridHash] = path
             except Exception:
                 continue
 
@@ -46,6 +65,8 @@ class ExperienceStore:
         if not validation["valid"]:
             return None
         gridHash = self._gridHash(mazeData)
+        if gridHash in self.excludedHashes:
+            return None
         self.mapPlayCounts[gridHash] = self.mapPlayCounts.get(gridHash, 0) + 1
         if gridHash in self.hashIndex and self.hashIndex[gridHash].exists():
             return self.hashIndex[gridHash]
@@ -67,6 +88,8 @@ class ExperienceStore:
 
     def addEpisode(self, episode, mazeData=None, sourcePath=None, isTestMap=False):
         if isTestMap or self._isExcludedPath(sourcePath):
+            return None
+        if mazeData is not None and self._gridHash(mazeData) in self.excludedHashes:
             return None
         savedPath = None
         if mazeData is not None:
@@ -97,9 +120,8 @@ class ExperienceStore:
                 continue
             try:
                 data = json.loads(path.read_text(encoding="utf-8"))
-                if validateMaze(data)["valid"]:
+                if validateMaze(data)["valid"] and self._gridHash(data) not in self.excludedHashes:
                     validPaths.append(path)
             except Exception:
                 continue
         return validPaths
-

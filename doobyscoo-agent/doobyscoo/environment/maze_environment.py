@@ -1,10 +1,12 @@
 import json
 from pathlib import Path
+from ..config import DEFAULT_CONFIG
 from .observation import ObservationEncoder, OBSERVATION_SIZE
 from .validation import DIRECTIONS, EMPTY, START, END, PIT, BONE, validateMaze
 
 ACTION_NAMES = ("up", "down", "left", "right")
 NAME_TO_ACTION = {"up": 0, "down": 1, "left": 2, "right": 3}
+OPPOSITE_WALL = ("bottom", "top", "right", "left")
 
 
 def loadMaze(path):
@@ -12,37 +14,38 @@ def loadMaze(path):
 
 
 class RewardConfig:
-    def __init__(
-        self,
-        stepPenalty=-1.0,
-        boneReward=5.0,
-        successBonus=50.0,
-        failurePenalty=-10.0,
-        stepTrainReward=-0.05,
-        blockedTrainPenalty=-0.12,
-        newCellTrainBonus=0.12,
-        boneTrainReward=1.5,
-        winTrainBonus=8.0,
-        timeoutTrainPenalty=0.0,
-    ):
-        self.stepPenalty = float(stepPenalty)
-        self.boneReward = float(boneReward)
-        self.successBonus = float(successBonus)
-        self.failurePenalty = float(failurePenalty)
-        self.stepTrainReward = float(stepTrainReward)
-        self.blockedTrainPenalty = float(blockedTrainPenalty)
-        self.newCellTrainBonus = float(newCellTrainBonus)
-        self.boneTrainReward = float(boneTrainReward)
-        self.winTrainBonus = float(winTrainBonus)
-        self.timeoutTrainPenalty = float(timeoutTrainPenalty)
+    """RL training reward. Independent from the official score (steps - 5 * bones)."""
+
+    FIELDS = tuple(DEFAULT_CONFIG["reward"].keys())
+
+    def __init__(self, **overrides):
+        values = dict(DEFAULT_CONFIG["reward"])
+        unknown = set(overrides) - set(values)
+        if unknown:
+            raise ValueError(f"Unknown reward config fields: {sorted(unknown)}")
+        values.update(overrides)
+        for key, value in values.items():
+            setattr(self, key, float(value))
+
+    @classmethod
+    def coerce(cls, value):
+        if value is None:
+            return cls()
+        if isinstance(value, cls):
+            return value
+        if isinstance(value, dict):
+            return cls(**value)
+        raise TypeError("rewardConfig must be None, a dict or a RewardConfig")
+
+    def revisitPenaltyFor(self, priorVisits):
+        """Penalty for entering a square that was already visited `priorVisits` (>=1) times."""
+        if priorVisits <= 0:
+            return 0.0
+        penalty = self.revisitPenalty + self.repeatedRevisitPenalty * (priorVisits - 1)
+        return max(self.maxRevisitPenalty, penalty)
 
     def toDict(self):
-        return {
-            "stepPenalty": self.stepPenalty,
-            "boneReward": self.boneReward,
-            "successBonus": self.successBonus,
-            "failurePenalty": self.failurePenalty,
-        }
+        return {key: getattr(self, key) for key in self.FIELDS}
 
 
 class MazeEnvironment:
@@ -98,14 +101,10 @@ class MazeEnvironment:
             raise ValueError("; ".join(validation["errors"]))
 
         self.maxSteps = int(maxSteps)
-        if rewardConfig is None:
-            self.rewardConfig = RewardConfig()
-        elif isinstance(rewardConfig, dict):
-            self.rewardConfig = RewardConfig(**rewardConfig)
-        else:
-            self.rewardConfig = rewardConfig
+        self.rewardConfig = RewardConfig.coerce(rewardConfig)
         self.encoder = ObservationEncoder(normalize=normalizeObservation)
         self.observationSize = OBSERVATION_SIZE
+        self._neighborCache = {}
         self.reset()
 
     def inside(self, position):
@@ -116,7 +115,16 @@ class MazeEnvironment:
         self.remainingBones = set(self.bones)
         self.steps = 0
         self.done = False
-        self.visited = {self.position}
+        # Per-episode visitation memory. visitCounts tracks squares the dog came to
+        # rest on (pit destinations included); pit squares stepped on and directed
+        # doorway traversals are tracked so the dog remembers explored branches.
+        self.visitCounts = {self.position: 1}
+        self.pitVisitCounts = {}
+        self.edgeCounts = {}
+        self.revisits = 0
+        self.wallBumps = 0
+        self.lastAction = None
+        self.lastMoved = True
         self.lastTeleported = False
         self.lastBoneCollected = False
         self.lastPitEntered = None
@@ -124,18 +132,30 @@ class MazeEnvironment:
         self.rawCumulativeReward = 0.0
         return self.observe()
 
-    def neighbor(self, action):
-        action = self.parseAction(action)
+    @property
+    def visited(self):
+        return set(self.visitCounts)
+
+    def visitCountAt(self, position):
+        return self.visitCounts.get(position, 0) + self.pitVisitCounts.get(position, 0)
+
+    def neighborAt(self, position, action):
+        key = (position, action)
+        if key in self._neighborCache:
+            return self._neighborCache[key]
         dx, dy, wall = DIRECTIONS[action]
-        x, y = self.position
+        x, y = position
         target = (x + dx, y + dy)
-        cell = self.grid[y][x]
-        if bool(cell.get(wall, False)) or not self.inside(target):
-            return None
-        opposite = ("bottom", "top", "right", "left")[action]
-        if bool(self.grid[target[1]][target[0]].get(opposite, False)):
-            return None
-        return target
+        result = target
+        if bool(self.grid[y][x].get(wall, False)) or not self.inside(target):
+            result = None
+        elif bool(self.grid[target[1]][target[0]].get(OPPOSITE_WALL[action], False)):
+            result = None
+        self._neighborCache[key] = result
+        return result
+
+    def neighbor(self, action):
+        return self.neighborAt(self.position, self.parseAction(action))
 
     def availableActions(self):
         return [ACTION_NAMES[a] for a in range(4) if self.neighbor(a) is not None]
@@ -160,15 +180,20 @@ class MazeEnvironment:
     def observeRaw(self):
         return self.encoder.encodeRaw(self)
 
+    def bonesCollected(self):
+        return len(self.bones) - len(self.remainingBones)
+
     def currentScore(self):
-        bonesCollected = len(self.bones) - len(self.remainingBones)
-        return self.steps - 5 * bonesCollected
+        return self.steps - 5 * self.bonesCollected()
 
     def step(self, action):
         if self.done:
             raise RuntimeError("Episode already finished")
         actionIndex = self.parseAction(action)
         previousPosition = self.position
+        edgeKey = (previousPosition, actionIndex)
+        self.edgeCounts[edgeKey] = self.edgeCounts.get(edgeKey, 0) + 1
+
         target = self.neighbor(actionIndex)
         moved = target is not None
         if moved:
@@ -180,6 +205,7 @@ class MazeEnvironment:
             seenPits = set()
             while self.position in self.pits and self.position not in seenPits:
                 seenPits.add(self.position)
+                self.pitVisitCounts[self.position] = self.pitVisitCounts.get(self.position, 0) + 1
                 self.position = self.pits[self.position]
                 teleported = True
 
@@ -187,9 +213,20 @@ class MazeEnvironment:
         if bone:
             self.remainingBones.remove(self.position)
 
-        newCell = self.position not in self.visited
-        self.visited.add(self.position)
+        priorVisits = 0
+        if moved:
+            priorVisits = self.visitCounts.get(self.position, 0)
+            self.visitCounts[self.position] = priorVisits + 1
+            if priorVisits > 0:
+                self.revisits += 1
+        else:
+            self.wallBumps += 1
+        newCell = moved and priorVisits == 0
+        revisit = moved and priorVisits > 0
+
         self.steps += 1
+        self.lastAction = actionIndex
+        self.lastMoved = moved
         self.lastTeleported = teleported
         self.lastBoneCollected = bone
         self.lastPitEntered = pitEntered
@@ -199,28 +236,30 @@ class MazeEnvironment:
         self.done = won or timeout
 
         rc = self.rewardConfig
-        rawReward = rc.stepPenalty
+        breakdown = {"move": rc.movePenalty}
+        if not moved:
+            breakdown["wall"] = rc.wallPenalty
+        if newCell:
+            breakdown["novelty"] = rc.noveltyReward
+        if revisit:
+            breakdown["revisit"] = rc.revisitPenaltyFor(priorVisits)
         if bone:
-            rawReward += rc.boneReward
+            breakdown["bone"] = rc.boneReward
+            if not self.remainingBones and self.bones:
+                breakdown["allBones"] = rc.allBonesBonus
         if won:
-            rawReward += rc.successBonus
+            breakdown["end"] = rc.endReward
         elif timeout:
-            rawReward += rc.failurePenalty
+            breakdown["stepLimit"] = rc.stepLimitPenalty
+            breakdown["failure"] = rc.failurePenalty
+        reward = float(sum(breakdown.values()))
 
-        reward = (
-            rc.stepTrainReward
-            + (rc.blockedTrainPenalty if not moved else 0.0)
-            + (rc.newCellTrainBonus if newCell else 0.0)
-            + (rc.boneTrainReward if bone else 0.0)
-            + (rc.winTrainBonus if won else 0.0)
-            + (rc.timeoutTrainPenalty if timeout else 0.0)
-        )
-        self.rawCumulativeReward += float(rawReward)
-        self.cumulativeReward += float(reward)
+        # Official-score-aligned signal (negated score delta) kept for reporting only.
+        rawReward = -1.0 + (5.0 if bone else 0.0)
+        self.rawCumulativeReward += rawReward
+        self.cumulativeReward += reward
 
-        bonesCollected = len(self.bones) - len(self.remainingBones)
-        score = self.steps - 5 * bonesCollected
-
+        bonesCollected = self.bonesCollected()
         info = {
             "action": actionIndex,
             "actionName": ACTION_NAMES[actionIndex],
@@ -234,19 +273,28 @@ class MazeEnvironment:
             "timeout": timeout,
             "steps": self.steps,
             "bonesCollected": bonesCollected,
+            "totalBones": len(self.bones),
             "remainingBonesCount": len(self.remainingBones),
-            "score": score,
+            "score": self.steps - 5 * bonesCollected,
             "done": self.done,
-            "reward": float(reward),
-            "rawReward": float(rawReward),
+            "newCell": newCell,
+            "revisit": revisit,
+            "visitCount": self.visitCounts.get(self.position, 0),
+            "wallBump": not moved,
+            "revisits": self.revisits,
+            "wallBumps": self.wallBumps,
+            "uniqueCells": len(self.visitCounts),
+            "reward": reward,
+            "rewardBreakdown": breakdown,
+            "rawReward": rawReward,
             "cumulativeReward": self.cumulativeReward,
             "rawCumulativeReward": self.rawCumulativeReward,
             "availableActions": self.availableActions(),
         }
-        return self.observe(), float(reward), self.done, info
+        return self.observe(), reward, self.done, info
 
     def state(self):
-        bonesCollected = len(self.bones) - len(self.remainingBones)
+        bonesCollected = self.bonesCollected()
         return {
             "position": list(self.position),
             "steps": self.steps,
@@ -256,6 +304,8 @@ class MazeEnvironment:
             "bonesCollected": bonesCollected,
             "remainingBones": [list(x) for x in sorted(self.remainingBones)],
             "score": self.steps - 5 * bonesCollected,
+            "revisits": self.revisits,
+            "uniqueCells": len(self.visitCounts),
             "cumulativeReward": round(self.cumulativeReward, 4),
             "availableActions": self.availableActions(),
             "observation": [round(float(x), 4) for x in self.observe()],

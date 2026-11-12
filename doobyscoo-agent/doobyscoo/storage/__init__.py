@@ -1,11 +1,27 @@
-from .checkpoint import saveCheckpoint, loadCheckpoint, loadCheckpointFull, getCheckpointMetadata
+from .checkpoint import (
+    CHECKPOINT_FORMAT,
+    IncompatibleCheckpointError,
+    bestCheckpointPath,
+    checkCompatibility,
+    getCheckpointMetadata,
+    initializeFreshModel,
+    loadCheckpoint,
+    loadCheckpointFull,
+    metricsLogPath,
+    saveCheckpoint,
+)
 from .experience_store import ExperienceStore
 
 __all__ = [
-    "saveCheckpoint",
+    "CHECKPOINT_FORMAT",
+    "IncompatibleCheckpointError",
+    "bestCheckpointPath",
+    "checkCompatibility",
+    "getCheckpointMetadata",
+    "initializeFreshModel",
     "loadCheckpoint",
     "loadCheckpointFull",
-    "getCheckpointMetadata",
+    "metricsLogPath",
+    "saveCheckpoint",
     "ExperienceStore",
 ]
-

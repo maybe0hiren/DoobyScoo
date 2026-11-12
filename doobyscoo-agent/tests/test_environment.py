@@ -1,5 +1,5 @@
 import unittest
-from doobyscoo.environment import MazeEnvironment, validateMaze, checkSolvability
+from doobyscoo.environment import MazeEnvironment, RewardConfig, OBSERVATION_SIZE, validateMaze, checkSolvability
 
 
 def makeGrid(width=3, height=3):
@@ -89,8 +89,11 @@ class EnvironmentTests(unittest.TestCase):
         maze["grid"][2][0]["top"] = True
         maze["grid"][1][0]["bottom"] = True
         env = MazeEnvironment(maze, maxSteps=20)
-        _, _, done, info = env.step(2)
+        _, rew, done, info = env.step(2)
         self.assertFalse(info["moved"])
+        self.assertTrue(info["wallBump"])
+        self.assertIn("wall", info["rewardBreakdown"])
+        self.assertLess(rew, env.rewardConfig.movePenalty)
         self.assertEqual(info["position"], [0, 2])
         self.assertEqual(info["steps"], 1)
         self.assertFalse(done)
@@ -103,7 +106,7 @@ class EnvironmentTests(unittest.TestCase):
     def testNormalMovementBoneCollectionPitAndEnd(self):
         env = MazeEnvironment(sampleMaze(), maxSteps=20)
         obs, _, done, info = env.step(3)
-        self.assertEqual(obs.shape, (8,))
+        self.assertEqual(obs.shape, (OBSERVATION_SIZE,))
         self.assertTrue(info["moved"])
         self.assertTrue(info["bone"])
         self.assertEqual(info["bonesCollected"], 1)
@@ -123,6 +126,81 @@ class EnvironmentTests(unittest.TestCase):
 
         with self.assertRaises(RuntimeError):
             env.step(0)
+
+    def testBoneRewardSubstantialAndOnlyOnce(self):
+        maze = sampleMaze()
+        # Add a second bone at (0, 1) so collecting (1, 2) does not also trigger allBonesBonus
+        maze["grid"][1][0]["element"] = 4
+        rc = RewardConfig()
+        env = MazeEnvironment(maze, maxSteps=20, rewardConfig=rc)
+
+        # First step right onto Bone at (1, 2)
+        _, rewardBone, _, info1 = env.step(3)
+        self.assertTrue(info1["bone"])
+        self.assertIn("bone", info1["rewardBreakdown"])
+        self.assertAlmostEqual(info1["rewardBreakdown"]["bone"], rc.boneReward)
+        self.assertGreater(rewardBone, 2.0)
+
+        # Step left back to start (0, 2), then right onto (1, 2) again: bone must NOT be awarded a second time
+        env.step(2)
+        _, rewardRepeat, _, info3 = env.step(3)
+        self.assertFalse(info3["bone"])
+        self.assertNotIn("bone", info3["rewardBreakdown"])
+        self.assertEqual(info3["bonesCollected"], 1)
+        self.assertLess(rewardRepeat, 0.0)
+
+    def testFirstVisitRevisitAndRepeatedRevisitPenaltiesAndReset(self):
+        rc = RewardConfig(
+            movePenalty=-0.04,
+            noveltyReward=0.08,
+            revisitPenalty=-0.10,
+            repeatedRevisitPenalty=-0.05,
+            maxRevisitPenalty=-0.25,
+        )
+        env = MazeEnvironment(sampleMaze(), maxSteps=30, rewardConfig=rc)
+        # Step UP to (0, 1): first visit to (0, 1)
+        _, rFirst, _, infoFirst = env.step(0)
+        self.assertTrue(infoFirst["newCell"])
+        self.assertFalse(infoFirst["revisit"])
+        self.assertEqual(infoFirst["visitCount"], 1)
+        self.assertIn("novelty", infoFirst["rewardBreakdown"])
+        self.assertNotIn("revisit", infoFirst["rewardBreakdown"])
+        self.assertAlmostEqual(rFirst, -0.04 + 0.08, places=5)
+
+        # Step DOWN back to Start (0, 2): Start was visited at episode start (priorVisits=1)
+        _, rRev1, _, infoRev1 = env.step(1)
+        self.assertFalse(infoRev1["newCell"])
+        self.assertTrue(infoRev1["revisit"])
+        self.assertEqual(infoRev1["visitCount"], 2)
+        self.assertAlmostEqual(infoRev1["rewardBreakdown"]["revisit"], -0.10, places=5)
+
+        # Step UP to (0, 1) again (priorVisits=1 -> -0.10), then DOWN to (0, 2) again (priorVisits=2 -> -0.15)
+        env.step(0)
+        _, rRev2, _, infoRev2 = env.step(1)
+        self.assertTrue(infoRev2["revisit"])
+        self.assertEqual(infoRev2["visitCount"], 3)
+        self.assertAlmostEqual(infoRev2["rewardBreakdown"]["revisit"], -0.15, places=5)
+        self.assertLess(rRev2, rRev1)
+
+        # Reset must clear visitation history
+        env.reset()
+        self.assertEqual(env.revisits, 0)
+        self.assertEqual(env.visitCounts, {(0, 2): 1})
+        self.assertEqual(env.pitVisitCounts, {})
+        self.assertEqual(env.edgeCounts, {})
+
+    def testPitTeleportationVisitationTracking(self):
+        env = MazeEnvironment(sampleMaze(), maxSteps=20)
+        env.step(3)  # move to (1, 2)
+        _, _, _, info = env.step(0)  # step into pit at (1, 1) -> teleports to (2, 1)
+        self.assertTrue(info["teleported"])
+        self.assertEqual(info["pitEntered"], [1, 1])
+        self.assertEqual(info["position"], [2, 1])
+        # Both the pit square (1, 1) and destination (2, 1) must be tracked as visited
+        self.assertEqual(env.pitVisitCounts.get((1, 1), 0), 1)
+        self.assertEqual(env.visitCounts.get((2, 1), 0), 1)
+        self.assertGreaterEqual(env.visitCountAt((1, 1)), 1)
+        self.assertGreaterEqual(env.visitCountAt((2, 1)), 1)
 
     def testPitTeleportationOntoBoneAndEnd(self):
         maze = sampleMaze()
@@ -159,4 +237,3 @@ class EnvironmentTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

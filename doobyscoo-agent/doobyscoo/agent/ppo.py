@@ -5,13 +5,17 @@ from torch.distributions import Categorical
 
 
 class UpdateMetrics(float):
-    def __new__(cls, totalLoss, policyLoss=0.0, valueLoss=0.0, entropy=0.0, approxKl=0.0):
+    def __new__(cls, totalLoss, policyLoss=0.0, valueLoss=0.0, entropy=0.0, approxKl=0.0, clipFraction=0.0,
+                epochsRun=0, entropyCoef=0.0):
         instance = super().__new__(cls, float(totalLoss))
         instance.totalLoss = float(totalLoss)
         instance.policyLoss = float(policyLoss)
         instance.valueLoss = float(valueLoss)
         instance.entropy = float(entropy)
         instance.approxKl = float(approxKl)
+        instance.clipFraction = float(clipFraction)
+        instance.epochsRun = int(epochsRun)
+        instance.entropyCoef = float(entropyCoef)
         return instance
 
     def toDict(self):
@@ -21,6 +25,9 @@ class UpdateMetrics(float):
             "valueLoss": self.valueLoss,
             "entropy": self.entropy,
             "approxKl": self.approxKl,
+            "clipFraction": self.clipFraction,
+            "epochsRun": self.epochsRun,
+            "entropyCoef": self.entropyCoef,
         }
 
     def __getitem__(self, key):
@@ -28,6 +35,7 @@ class UpdateMetrics(float):
 
 
 def computeAdvantages(episode, gamma=0.99, gaeLambda=0.95):
+    """Generalised Advantage Estimation over one complete episode."""
     rewards = episode["rewards"]
     values = episode["values"]
     bootstrapValue = float(episode.get("bootstrapValue", 0.0))
@@ -42,6 +50,15 @@ def computeAdvantages(episode, gamma=0.99, gaeLambda=0.95):
     return advantages, returns
 
 
+def _pad(sequences, length, dtype, featureSize=None):
+    shape = (len(sequences), length) if featureSize is None else (len(sequences), length, featureSize)
+    out = np.zeros(shape, dtype=dtype)
+    for i, seq in enumerate(sequences):
+        arr = np.asarray(seq, dtype=dtype)
+        out[i, : len(arr)] = arr
+    return torch.as_tensor(out)
+
+
 def updatePolicy(
     model,
     optimizer,
@@ -49,91 +66,116 @@ def updatePolicy(
     epochs=4,
     clipRange=0.2,
     valueCoef=0.5,
-    entropyCoef=0.01,
+    entropyCoef=0.015,
     maxGradNorm=0.5,
     gamma=0.99,
     gaeLambda=0.95,
+    shortGamma=0.50,
+    shortLambda=0.50,
+    shortAdvantageWeight=0.55,
+    minibatchEpisodes=8,
+    targetKl=0.04,
 ):
+    """Recurrent PPO update over complete episodes.
+
+    Every episode is replayed from its own zero initial LSTM state, so sequence
+    boundaries are respected; padding is masked out of every loss term. Blends
+    short-horizon GAE (for low-variance credit on immediate wall collisions,
+    revisits, and bone pickups) with long-horizon GAE (for multi-step routes),
+    and updates `dirLinear` on the experienced directional step rewards.
+    """
     validEpisodes = [ep for ep in episodes if len(ep.get("actions", [])) > 0]
     if not validEpisodes:
-        return UpdateMetrics(0.0)
+        return UpdateMetrics(0.0, entropyCoef=entropyCoef)
 
     computed = [computeAdvantages(ep, gamma=gamma, gaeLambda=gaeLambda) for ep in validEpisodes]
-    shortComputed = [computeAdvantages(ep, gamma=0.4, gaeLambda=0.4) for ep in validEpisodes]
-    allAdvantages = np.concatenate([adv for adv, _ in computed])
-    advantageMean = float(allAdvantages.mean())
-    advantageStd = float(allAdvantages.std() + 1e-8)
+    shortComputed = [computeAdvantages(ep, gamma=shortGamma, gaeLambda=shortLambda) for ep in validEpisodes]
+    allAdv = np.concatenate([adv for adv, _ in computed])
+    advMean = float(allAdv.mean())
+    advStd = float(allAdv.std() + 1e-8)
     allShort = np.concatenate([adv for adv, _ in shortComputed])
     shortMean = float(allShort.mean())
     shortStd = float(allShort.std() + 1e-8)
+    shortW = float(shortAdvantageWeight)
 
-    totalLosses, policyLosses, valueLosses, entropies, kls = [], [], [], [], []
+    featureSize = len(validEpisodes[0]["observations"][0])
+    lengths = [len(ep["actions"]) for ep in validEpisodes]
 
-    for _ in range(epochs):
+    totalLosses, policyLosses, valueLosses, entropies, kls, clipFracs = [], [], [], [], [], []
+    epochsRun = 0
+    model.train()
+    for _ in range(int(epochs)):
         order = list(range(len(validEpisodes)))
         random.shuffle(order)
-        for index in order:
-            episode = validEpisodes[index]
-            rawAdvantages, rawReturns = computed[index]
-            rawShortAdv, _ = shortComputed[index]
-            observations = torch.as_tensor(np.asarray(episode["observations"]), dtype=torch.float32)
-            actions = torch.as_tensor(episode["actions"], dtype=torch.long)
-            rewardsTensor = torch.as_tensor(episode["rewards"], dtype=torch.float32)
-            oldLogProbs = torch.as_tensor(episode["logProbs"], dtype=torch.float32)
-            normLong = (rawAdvantages - advantageMean) / advantageStd
-            normShort = (rawShortAdv - shortMean) / shortStd
-            advantages = torch.as_tensor(0.45 * normLong + 0.55 * normShort, dtype=torch.float32)
-            returns = torch.as_tensor(rawReturns, dtype=torch.float32)
+        epochKls = []
+        for start in range(0, len(order), max(1, int(minibatchEpisodes))):
+            idx = order[start : start + max(1, int(minibatchEpisodes))]
+            maxLen = max(lengths[i] for i in idx)
+            obs = _pad([validEpisodes[i]["observations"] for i in idx], maxLen, np.float32, featureSize)
+            actions = _pad([validEpisodes[i]["actions"] for i in idx], maxLen, np.int64)
+            rewards = _pad([validEpisodes[i]["rewards"] for i in idx], maxLen, np.float32)
+            oldLogProbs = _pad([validEpisodes[i]["logProbs"] for i in idx], maxLen, np.float32)
+            blendedAdv = [
+                (1.0 - shortW) * ((computed[i][0] - advMean) / advStd)
+                + shortW * ((shortComputed[i][0] - shortMean) / shortStd)
+                for i in idx
+            ]
+            adv = _pad(blendedAdv, maxLen, np.float32)
+            returns = _pad([computed[i][1] for i in idx], maxLen, np.float32)
+            mask = _pad([np.ones(lengths[i]) for i in idx], maxLen, np.float32)
+            maskSum = mask.sum().clamp(min=1.0)
 
-            initialState = episode.get("initialState", None)
-            seqOut = model.sequence(
-                observations,
-                initialState=initialState,
-                actions=episode["actions"],
-                returnDirFeats=True,
-            )
+            seqOut = model.sequence(obs, returnDirFeats=True)
             if len(seqOut) == 3:
-                logits, values, dirFeats = seqOut
+                logits, values, dirTensor = seqOut
             else:
                 logits, values = seqOut
-                dirFeats = None
+                dirTensor = None
 
             distribution = Categorical(logits=logits)
             newLogProbs = distribution.log_prob(actions)
             logRatio = newLogProbs - oldLogProbs
             ratio = logRatio.exp()
-
-            surr1 = ratio * advantages
-            surr2 = torch.clamp(ratio, 1.0 - clipRange, 1.0 + clipRange) * advantages
-            actorLoss = -torch.minimum(surr1, surr2).mean()
-            valueLoss = 0.5 * (values - returns).square().mean()
-            entropy = distribution.entropy().mean()
+            surr1 = ratio * adv
+            surr2 = torch.clamp(ratio, 1.0 - clipRange, 1.0 + clipRange) * adv
+            actorLoss = -(torch.minimum(surr1, surr2) * mask).sum() / maskSum
+            valueLoss = 0.5 * (((values - returns) ** 2) * mask).sum() / maskSum
+            entropy = (distribution.entropy() * mask).sum() / maskSum
             loss = actorLoss + valueCoef * valueLoss - entropyCoef * entropy
 
-            if dirFeats is not None and hasattr(model, "dirScorer"):
-                chosenFeats = dirFeats[torch.arange(len(actions)), actions]
-                predDirUtility = model.dirScorer(chosenFeats).squeeze(-1)
-                targetUtility = torch.clamp(rewardsTensor, min=-1.0, max=2.0)
-                dirAuxLoss = 0.5 * (predDirUtility - targetUtility).square().mean()
-                loss = loss + 0.5 * dirAuxLoss
+            chosenDir = None
+            targetUtility = None
+            if dirTensor is not None and hasattr(model, "dirLinear"):
+                chosenDir = dirTensor.detach().gather(
+                    2, actions.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, 1, dirTensor.shape[-1])
+                ).squeeze(2)
+                targetUtility = torch.clamp(rewards, min=-1.0, max=2.2)
 
             optimizer.zero_grad()
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), maxGradNorm)
             optimizer.step()
-            if dirFeats is not None and hasattr(model, "dirScorer"):
-                with torch.no_grad():
-                    chosenFeats = dirFeats[torch.arange(len(actions)), actions]
-                    err = torch.clamp(rewardsTensor, min=-1.0, max=2.0) - model.dirScorer(chosenFeats).squeeze(-1)
-                    gradStep = (err.unsqueeze(-1) * chosenFeats).mean(dim=0, keepdim=True)
-                    model.dirScorer.weight.add_(0.08 * gradStep)
 
-            approxKl = float(((ratio - 1.0) - logRatio).mean().detach().item())
-            totalLosses.append(float(loss.detach().item()))
-            policyLosses.append(float(actorLoss.detach().item()))
-            valueLosses.append(float(valueLoss.detach().item()))
-            entropies.append(float(entropy.detach().item()))
+            if chosenDir is not None and targetUtility is not None:
+                with torch.no_grad():
+                    err = (targetUtility - model.dirLinear(chosenDir).squeeze(-1)) * mask
+                    activeMass = (chosenDir.abs() * mask.unsqueeze(-1)).sum(dim=(0, 1)).clamp(min=1.0)
+                    gradStep = ((err.unsqueeze(-1) * chosenDir).sum(dim=(0, 1)) / activeMass).unsqueeze(0)
+                    model.dirLinear.weight.add_(0.12 * gradStep)
+
+            with torch.no_grad():
+                approxKl = float((((ratio - 1.0) - logRatio) * mask).sum() / maskSum)
+                clipFrac = float((((ratio - 1.0).abs() > clipRange).float() * mask).sum() / maskSum)
+            epochKls.append(approxKl)
+            totalLosses.append(float(loss.detach()))
+            policyLosses.append(float(actorLoss.detach()))
+            valueLosses.append(float(valueLoss.detach()))
+            entropies.append(float(entropy.detach()))
             kls.append(approxKl)
+            clipFracs.append(clipFrac)
+        epochsRun += 1
+        if targetKl and np.mean(epochKls) > 1.5 * float(targetKl):
+            break
 
     return UpdateMetrics(
         np.mean(totalLosses),
@@ -141,4 +183,7 @@ def updatePolicy(
         valueLoss=np.mean(valueLosses),
         entropy=np.mean(entropies),
         approxKl=np.mean(kls),
+        clipFraction=np.mean(clipFracs),
+        epochsRun=epochsRun,
+        entropyCoef=entropyCoef,
     )

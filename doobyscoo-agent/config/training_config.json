@@ -1,0 +1,66 @@
+{
+  "reward": {
+    "movePenalty": -0.04,
+    "boneReward": 3.5,
+    "allBonesBonus": 2.0,
+    "endReward": 10.0,
+    "wallPenalty": -0.6,
+    "revisitPenalty": -0.08,
+    "repeatedRevisitPenalty": -0.04,
+    "maxRevisitPenalty": -0.24,
+    "noveltyReward": 0.08,
+    "stepLimitPenalty": -2.0,
+    "failurePenalty": -3.0
+  },
+  "exploration": {
+    "entropyStart": 0.025,
+    "entropyEnd": 0.006,
+    "entropyDecayUpdates": 250,
+    "entropyTarget": 0.3,
+    "entropyBoost": 2.0,
+    "noveltyAnnealUpdates": 0,
+    "noveltyFloor": 0.5
+  },
+  "ppo": {
+    "learningRate": 0.0008,
+    "gamma": 0.99,
+    "gaeLambda": 0.95,
+    "shortGamma": 0.5,
+    "shortLambda": 0.5,
+    "shortAdvantageWeight": 0.55,
+    "clipRange": 0.2,
+    "valueCoef": 0.5,
+    "maxGradNorm": 0.5,
+    "epochs": 4,
+    "minibatchEpisodes": 8,
+    "targetKl": 0.04,
+    "hiddenSize": 128
+  },
+  "training": {
+    "episodesPerUpdate": 16,
+    "maxSteps": 300,
+    "evalInterval": 10,
+    "evalEpisodesPerMap": 1,
+    "cpuThreads": 4,
+    "seed": null
+  },
+  "sampling": {
+    "strategy": "shuffled_deck",
+    "struggleFraction": 0.25,
+    "uniqueMapsPerBatch": true
+  },
+  "rehearsal": {
+    "probability": 0.35,
+    "maxProbability": 0.6,
+    "adaptive": true,
+    "retentionTolerance": 0.1,
+    "retentionSampleSize": 12,
+    "playedRatio": 0.4
+  },
+  "continual": {
+    "updates": 3,
+    "episodesPerUpdate": 8,
+    "newMapEpisodes": 4,
+    "learningRate": 0.0003
+  }
+}

@@ -130,3 +130,51 @@ func reset_episode(session_id: String = "") -> Dictionary:
 func trigger_learning(async_run: bool = true) -> Dictionary:
 	return await _request_json(HTTPClient.METHOD_POST, "/learn", {"async": async_run})
 
+
+func start_competitive_episode(
+	maze_data: Dictionary,
+	match_id: String,
+	map_id: String,
+	map_hash: String,
+	deterministic: bool = true
+) -> Dictionary:
+	var clean_maze := MazeSerializer.to_json_compatible_dict(maze_data)
+	var payload := {
+		"maze": clean_maze,
+		"mode": "competitive",
+		"match_id": match_id,
+		"map_id": map_id,
+		"map_hash": map_hash,
+		"deterministic": deterministic,
+		"collect_experience": false
+	}
+	return await _request_json(HTTPClient.METHOD_POST, "/episode/start", payload)
+
+
+func solve_competitive_maze(
+	maze_data: Dictionary,
+	match_id: String,
+	map_id: String,
+	map_hash: String,
+	deterministic: bool = true
+) -> Dictionary:
+	var clean_maze := MazeSerializer.to_json_compatible_dict(maze_data)
+	var payload := {
+		"maze": clean_maze,
+		"mode": "competitive",
+		"match_id": match_id,
+		"map_id": map_id,
+		"map_hash": map_hash,
+		"deterministic": deterministic,
+		"collect_experience": false
+	}
+	return await _request_json(HTTPClient.METHOD_POST, "/competitive/solve", payload)
+
+
+func learn_from_competitive_session(session_id: String, async_run: bool = true) -> Dictionary:
+	var payload := {
+		"session_id": session_id,
+		"async": async_run
+	}
+	return await _request_json(HTTPClient.METHOD_POST, "/competitive/learn", payload)
+

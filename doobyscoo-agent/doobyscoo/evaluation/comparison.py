@@ -4,7 +4,7 @@ from ..storage.checkpoint import loadCheckpointFull
 from .evaluator import evaluate
 
 
-def compareModels(modelsOrPaths, testPaths, episodesPerMap=1, maxSteps=300):
+def compareModels(modelsOrPaths, testPaths, episodesPerMap=1, maxSteps=300, deterministic=True):
     summary = {}
     for label, item in modelsOrPaths.items():
         if isinstance(item, RecurrentPolicy):
@@ -17,7 +17,14 @@ def compareModels(modelsOrPaths, testPaths, episodesPerMap=1, maxSteps=300):
             model = RecurrentPolicy()
             meta = loadCheckpointFull(Path(item), model)
             version = meta.get("version", 0)
-        metrics = evaluate(model, testPaths, episodesPerMap=episodesPerMap, maxSteps=maxSteps, modelVersion=version)
+        metrics = evaluate(
+            model,
+            testPaths,
+            episodesPerMap=episodesPerMap,
+            maxSteps=maxSteps,
+            deterministic=deterministic,
+            modelVersion=version,
+        )
         summary[label] = metrics
 
     labels = list(summary.keys())
@@ -29,10 +36,13 @@ def compareModels(modelsOrPaths, testPaths, episodesPerMap=1, maxSteps=300):
             otherMetrics = summary[otherLabel]
             winDelta = otherMetrics["winRate"] - baseMetrics["winRate"]
             scoreDelta = otherMetrics["meanScore"] - baseMetrics["meanScore"]
+            boneDelta = otherMetrics["bonesCollected"] - baseMetrics["bonesCollected"]
+            revisitDelta = otherMetrics["revisitRate"] - baseMetrics["revisitRate"]
             comparison["improvements"][f"{baseLabel}_to_{otherLabel}"] = {
                 "winRateDelta": float(winDelta),
                 "meanScoreDelta": float(scoreDelta),
+                "bonesCollectedDelta": float(boneDelta),
+                "revisitRateDelta": float(revisitDelta),
                 "improved": (winDelta > 0.0) or (winDelta == 0.0 and scoreDelta <= 0.0),
             }
     return comparison
-

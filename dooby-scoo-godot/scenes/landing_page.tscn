@@ -66,36 +66,44 @@ scale = Vector2(2.6, 2.6)
 script = ExtResource("4_dog")
 
 [node name="Panel2" type="Panel" parent="." unique_id=134487511]
-offset_left = 355.0
-offset_top = 320.0
-offset_right = 735.0
-offset_bottom = 396.0
+offset_left = 150.0
+offset_top = 340.0
+offset_right = 530.0
+offset_bottom = 416.0
 theme_override_styles/panel = SubResource("StyleBoxFlat_nftrr")
 metadata/_edit_group_ = true
 
 [node name="Panel" type="Panel" parent="." unique_id=1740933251]
-offset_left = 355.0
-offset_top = 415.0
-offset_right = 735.0
-offset_bottom = 491.0
+offset_left = 560.0
+offset_top = 340.0
+offset_right = 940.0
+offset_bottom = 416.0
 theme_override_styles/panel = SubResource("StyleBoxFlat_nftrr")
 metadata/_edit_group_ = true
 
 [node name="Panel3" type="Panel" parent="." unique_id=1740933252]
-offset_left = 355.0
-offset_top = 510.0
-offset_right = 735.0
-offset_bottom = 586.0
+offset_left = 150.0
+offset_top = 445.0
+offset_right = 530.0
+offset_bottom = 521.0
+theme_override_styles/panel = SubResource("StyleBoxFlat_nftrr")
+metadata/_edit_group_ = true
+
+[node name="Panel4" type="Panel" parent="." unique_id=1740933253]
+offset_left = 560.0
+offset_top = 445.0
+offset_right = 940.0
+offset_bottom = 521.0
 theme_override_styles/panel = SubResource("StyleBoxFlat_nftrr")
 metadata/_edit_group_ = true
 
 [node name="MyMapsButton" type="Button" parent="." unique_id=1042898809]
-offset_left = 355.0
-offset_top = 320.0
-offset_right = 736.0
-offset_bottom = 396.0
+offset_left = 150.0
+offset_top = 340.0
+offset_right = 531.0
+offset_bottom = 416.0
 theme_override_colors/font_color = Color(1, 1, 1, 1)
-theme_override_font_sizes/font_size = 30
+theme_override_font_sizes/font_size = 28
 theme_override_styles/normal = ExtResource("3_nftrr")
 theme_override_styles/pressed = ExtResource("3_nftrr")
 theme_override_styles/hover = ExtResource("3_nftrr")
@@ -104,12 +112,12 @@ text = "My Maps"
 metadata/_edit_group_ = true
 
 [node name="NewMapButton" type="Button" parent="." unique_id=2028949283]
-offset_left = 356.0
-offset_top = 415.0
-offset_right = 737.0
-offset_bottom = 491.0
+offset_left = 560.0
+offset_top = 340.0
+offset_right = 941.0
+offset_bottom = 416.0
 theme_override_colors/font_color = Color(1, 1, 1, 1)
-theme_override_font_sizes/font_size = 30
+theme_override_font_sizes/font_size = 28
 theme_override_styles/normal = ExtResource("3_nftrr")
 theme_override_styles/pressed = ExtResource("3_nftrr")
 theme_override_styles/hover = ExtResource("3_nftrr")
@@ -118,12 +126,12 @@ text = "Create Maze"
 metadata/_edit_group_ = true
 
 [node name="PlayButton" type="Button" parent="." unique_id=2028949284]
-offset_left = 356.0
-offset_top = 510.0
-offset_right = 737.0
-offset_bottom = 586.0
+offset_left = 150.0
+offset_top = 445.0
+offset_right = 531.0
+offset_bottom = 521.0
 theme_override_colors/font_color = Color(1, 1, 1, 1)
-theme_override_font_sizes/font_size = 30
+theme_override_font_sizes/font_size = 28
 theme_override_styles/normal = ExtResource("3_nftrr")
 theme_override_styles/pressed = ExtResource("3_nftrr")
 theme_override_styles/hover = ExtResource("3_nftrr")
@@ -131,8 +139,23 @@ theme_override_styles/focus = ExtResource("3_nftrr")
 text = "Play / Train Dog"
 metadata/_edit_group_ = true
 
+[node name="MultiplayerButton" type="Button" parent="." unique_id=2028949285]
+offset_left = 560.0
+offset_top = 445.0
+offset_right = 941.0
+offset_bottom = 521.0
+theme_override_colors/font_color = Color(1, 0.96, 0.72, 1)
+theme_override_font_sizes/font_size = 28
+theme_override_styles/normal = ExtResource("3_nftrr")
+theme_override_styles/pressed = ExtResource("3_nftrr")
+theme_override_styles/hover = ExtResource("3_nftrr")
+theme_override_styles/focus = ExtResource("3_nftrr")
+text = "Multiplayer Arena"
+metadata/_edit_group_ = true
+
 [connection signal="button_down" from="NewMapButton" to="." method="_on_new_map_button_button_down"]
 [connection signal="button_up" from="NewMapButton" to="." method="_on_new_map_button_button_up"]
 [connection signal="button_down" from="MyMapsButton" to="." method="_on_my_maps_button_button_down"]
 [connection signal="button_up" from="MyMapsButton" to="." method="_on_my_maps_button_button_up"]
 [connection signal="pressed" from="PlayButton" to="." method="_on_play_button_pressed"]
+[connection signal="pressed" from="MultiplayerButton" to="." method="_on_multiplayer_button_pressed"]

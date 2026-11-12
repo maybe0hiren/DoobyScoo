@@ -3,6 +3,7 @@ extends Node2D
 @onready var newMapButton: Button = $NewMapButton
 @onready var myMapsButton: Button = $MyMapsButton
 @onready var playButton: Button = get_node_or_null("PlayButton")
+@onready var multiplayerButton: Button = get_node_or_null("MultiplayerButton")
 @onready var mascotNode: Node2D = get_node_or_null("MascotDog")
 
 var ogPosition: Vector2
@@ -62,7 +63,7 @@ func _on_play_button_pressed() -> void:
 			if fname == "":
 				break
 			if !dir.current_is_dir() and fname.ends_with(".json"):
-				var path := MazeSession.SAVE_DIRECTORY + fname
+				var path: String = MazeSession.SAVE_DIRECTORY + fname
 				var data := MazeSerializer.load_maze(path)
 				if !data.is_empty():
 					MazeSession.loaded_maze = data
@@ -72,3 +73,7 @@ func _on_play_button_pressed() -> void:
 					return
 		dir.list_dir_end()
 	get_tree().change_scene_to_file("res://scenes/my_maps.tscn")
+
+
+func _on_multiplayer_button_pressed() -> void:
+	get_tree().change_scene_to_file("res://scenes/multiplayer_page.tscn")

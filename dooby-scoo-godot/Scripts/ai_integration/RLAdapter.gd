@@ -119,3 +119,39 @@ func request_continual_learning(async_run: bool = true) -> Dictionary:
 	learning_started.emit(res)
 	return res
 
+
+func start_competitive_session(
+	maze_data: Dictionary,
+	match_id: String,
+	map_id: String,
+	map_hash: String,
+	deterministic: bool = true
+) -> Dictionary:
+	use_mock = false
+	var res: Dictionary = await real_client.start_competitive_episode(
+		maze_data,
+		match_id,
+		map_id,
+		map_hash,
+		deterministic
+	)
+	if !res.get("success", false) or res.has("error"):
+		var msg := str(res.get("error", "Failed to start competitive RL session."))
+		integration_error.emit(msg)
+		return res
+	current_session_id = str(res.get("session_id", "default"))
+	session_active = true
+	session_started.emit(res)
+	return res
+
+
+func learn_from_competitive_match(async_run: bool = true) -> Dictionary:
+	if current_session_id == "":
+		return {"success": false, "error": "No competitive session available to learn from."}
+	var res: Dictionary = await real_client.learn_from_competitive_session(current_session_id, async_run)
+	if !res.get("success", false) or res.has("error"):
+		integration_error.emit(str(res.get("error", "Failed to learn from competitive session.")))
+		return res
+	learning_started.emit(res)
+	return res
+

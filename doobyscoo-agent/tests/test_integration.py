@@ -6,6 +6,7 @@ import urllib.request
 from pathlib import Path
 from doobyscoo.agent import RecurrentPolicy
 from doobyscoo.communication.server import createServer
+from doobyscoo.environment import OBSERVATION_SIZE
 from doobyscoo.storage import saveCheckpoint
 from tests.test_environment import sampleMaze
 
@@ -67,7 +68,7 @@ class IntegrationTests(unittest.TestCase):
         startResp = self._post("/episode/start", {"maze": sampleMaze(), "mode": "training"})
         self.assertTrue(startResp["success"])
         sessionId = startResp["session_id"]
-        self.assertEqual(len(startResp["observation"]), 8)
+        self.assertEqual(len(startResp["observation"]), OBSERVATION_SIZE)
 
         actionResp = self._post("/agent/action", {"session_id": sessionId, "observation": startResp["observation"]})
         self.assertTrue(actionResp["success"])

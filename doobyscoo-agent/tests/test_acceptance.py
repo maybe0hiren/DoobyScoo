@@ -5,9 +5,9 @@ import threading
 import unittest
 import urllib.request
 from pathlib import Path
-from doobyscoo.agent import RecurrentPolicy
+from doobyscoo.agent import ARCHITECTURE_ID, RecurrentPolicy
 from doobyscoo.communication.server import createServer
-from doobyscoo.environment import loadMaze
+from doobyscoo.environment import OBSERVATION_SIZE, loadMaze
 from doobyscoo.evaluation import compareModels, evaluate
 from doobyscoo.storage import getCheckpointMetadata, loadCheckpointFull
 from doobyscoo.training import discoverMaps
@@ -23,6 +23,9 @@ class AcceptanceTests(unittest.TestCase):
         self.assertTrue(self.modelPath.exists(), "Trained model models/dog.pt must exist")
         meta = getCheckpointMetadata(self.modelPath)
         self.assertTrue(meta["exists"])
+        self.assertEqual(meta["architecture"], ARCHITECTURE_ID)
+        self.assertIsNotNone(meta["modelId"])
+        self.assertTrue(meta["freshInit"]["startedFromScratch"])
         self.assertGreaterEqual(meta["updates"], 20)
         self.assertGreaterEqual(meta["version"], 1)
         trainMaps = discoverMaps(self.agentRoot / "maps" / "train")
@@ -39,6 +42,8 @@ class AcceptanceTests(unittest.TestCase):
         )
         trainedMetrics = comparison["models"]["trained"]
         self.assertGreaterEqual(trainedMetrics["winRate"], 0.85)
+        self.assertGreaterEqual(trainedMetrics["boneCollectionRate"], 0.35)
+        self.assertLessEqual(trainedMetrics["revisitRate"], 0.20)
         self.assertEqual(len(trainedMetrics["resultsPerMap"]), 8)
         self.assertTrue(comparison["improvements"]["untrained_to_trained"]["improved"])
 
@@ -90,6 +95,7 @@ class AcceptanceTests(unittest.TestCase):
                     {"maze": godotMaze, "mode": "training", "deterministic": True, "collect_experience": True},
                 )
                 self.assertTrue(startResp["success"])
+                self.assertEqual(len(startResp["observation"]), OBSERVATION_SIZE)
                 sid = startResp["session_id"]
 
                 done = False
@@ -158,6 +164,7 @@ class AcceptanceTests(unittest.TestCase):
             "scenes/my_maps.tscn",
             "scenes/mazeRow.tscn",
             "scenes/gameplay_page.tscn",
+            "scenes/multiplayer_page.tscn",
             "scenes/MazeSession.tscn",
         ]
         for relScene in requiredScenes:
@@ -171,4 +178,3 @@ class AcceptanceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

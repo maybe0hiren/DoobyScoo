@@ -1,0 +1,43 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-doobyscoo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-doobyscoo_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-doobyscoo}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - backend_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-doobyscoo} -d ${POSTGRES_DB:-doobyscoo}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  server:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      HOST: 0.0.0.0
+      PORT: 8000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-doobyscoo}:${POSTGRES_PASSWORD:-doobyscoo_dev_password}@db:5432/${POSTGRES_DB:-doobyscoo}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-me-in-production}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+    ports:
+      - "${PORT:-8000}:8000"
+    networks:
+      - backend_net
+
+networks:
+  backend_net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+

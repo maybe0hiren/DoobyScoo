@@ -61,6 +61,10 @@ def createServer(
                     result = service.stepEpisode(data)
                 elif self.path == "/episode/end":
                     result = service.endEpisode(data)
+                elif self.path == "/competitive/solve":
+                    result = service.solveCompetitiveMaze(data)
+                elif self.path == "/competitive/learn":
+                    result = service.learnFromCompetitiveSession(data)
                 elif self.path == "/learn":
                     asyncRun = bool(data.get("async", True))
                     result = service.learn(asyncRun=asyncRun)
