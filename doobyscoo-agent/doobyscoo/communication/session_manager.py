@@ -1,6 +1,7 @@
 import copy
 import threading
 import uuid
+import numpy as np
 from pathlib import Path
 from ..agent.network import RecurrentPolicy, chooseAction
 from ..environment.maze_environment import MazeEnvironment, ACTION_NAMES
@@ -11,6 +12,7 @@ from ..storage.checkpoint import (
     loadCheckpointFull,
 )
 from ..storage.experience_store import ExperienceStore
+from ..training.metrics import LearningProgressReporter, MazeOptimizationTracker
 from ..training.trainer import continualLearnStep
 from .protocol import actionToName, parseActionValue, validateObservationInput
 
@@ -37,16 +39,25 @@ class EpisodeSession:
         mapId=None,
         mapHash=None,
         modelVersion=1,
+        enforceScoreLimit=None,
+        priorMazeMemory=None,
     ):
         self.sessionId = str(sessionId)
         self.mazeData = mazeData
-        self.environment = MazeEnvironment(mazeData, maxSteps=maxSteps)
-        self.policyModel = copy.deepcopy(model).eval() if str(mode).lower() == "competitive" else model
+        isCompetitive = str(mode).lower() == "competitive"
+        activeScoreLimit = False if isCompetitive else (bool(enforceScoreLimit) if enforceScoreLimit is not None else (str(mode).lower() == "training"))
+        self.environment = MazeEnvironment(
+            mazeData,
+            maxSteps=maxSteps,
+            enforceScoreLimit=activeScoreLimit,
+            priorMazeMemory=priorMazeMemory,
+        )
+        self.policyModel = copy.deepcopy(model).eval() if isCompetitive else model
         self.memory = self.policyModel.initialState()
         self.initialState = self.memory.detach()
         self.mode = str(mode)
         self.deterministic = bool(deterministic)
-        self.collectExperience = False if str(mode).lower() == "competitive" else bool(collectExperience)
+        self.collectExperience = False if isCompetitive else bool(collectExperience)
         self.isTestMap = bool(isTestMap)
         self.matchId = str(matchId) if matchId else None
         self.mapId = str(mapId) if mapId else None
@@ -59,17 +70,21 @@ class EpisodeSession:
         self.trajectory = {
             "observations": [],
             "actions": [],
+            "actionMasks": [],
             "logProbs": [],
             "values": [],
             "rewards": [],
             "rawRewards": [],
             "initialState": self.initialState,
+            "modelVersion": int(modelVersion),
         }
 
-    def reset(self, model):
+    def reset(self, model, modelVersion=None):
         self.environment.reset()
         if str(self.mode).lower() != "competitive":
             self.policyModel = model
+            if modelVersion is not None:
+                self.modelVersion = int(modelVersion)
         self.memory = self.policyModel.initialState()
         self.initialState = self.memory.detach()
         self.pendingAction = None
@@ -78,11 +93,13 @@ class EpisodeSession:
         self.trajectory = {
             "observations": [],
             "actions": [],
+            "actionMasks": [],
             "logProbs": [],
             "values": [],
             "rewards": [],
             "rawRewards": [],
             "initialState": self.initialState,
+            "modelVersion": int(self.modelVersion),
         }
 
 
@@ -119,9 +136,13 @@ class GameService:
             playedMapsFolder=self.mapsFolder,
             excludedFolders=["maps/test", self.validationFolder] if self.validationFolder else ["maps/test"],
         )
+        self.optimizationTracker = MazeOptimizationTracker(self.meta.get("optimizationState"))
+        self.progressReporter = LearningProgressReporter()
+        self.mazeMemoriesByName = {}
 
         self.lock = threading.RLock()
         self.learning = False
+        self.policyUpdatedCount = 0
         self.lastTrainingMetrics = {}
         self.sessions = {}
         self.defaultSessionId = "default"
@@ -134,6 +155,81 @@ class GameService:
         self.environment = session.environment
         self.memory = session.memory
         self.mazeData = session.mazeData
+
+    def _mazeKeyFor(self, mazeData, mapId=None):
+        if isinstance(mazeData, dict):
+            metaName = mazeData.get("metadata", {}).get("maze_name")
+            if metaName:
+                return str(metaName)
+        if mapId:
+            return str(mapId)
+        return "custom_maze"
+
+    def _computeSessionLogitBias(self, session):
+        if session is None or session.deterministic or str(session.mode).lower() == "competitive":
+            return None
+        env = session.environment
+        openActions = env.availableActionIndices()
+        if len(openActions) < 2:
+            return None
+        pos = (int(env.position[0]), int(env.position[1]))
+        pm = env.priorMazeMemory
+        priorDeadEdges = pm.get("cumulativeDeadEndEdges", set()) | env.deadEndEdges
+        priorLoopEdges = pm.get("historicalLoopEdges", set()) | env.loopEdges
+        priorEdges = pm.get("cumulativeTraversedEdges", set())
+
+        bias = np.zeros(4, dtype=np.float32)
+        anyBias = False
+        deadActions = []
+        viableActions = []
+        for act in openActions:
+            target = env.neighbor(act)
+            if target is None:
+                continue
+            edgeTuple = (pos[0], pos[1], int(act))
+            isDead = (
+                (target in env.knownDeadEnds or edgeTuple in priorDeadEdges)
+                and (target not in env.remainingBones)
+                and (target not in env.ends)
+            )
+            if isDead:
+                deadActions.append(act)
+            else:
+                viableActions.append(act)
+
+        if deadActions and viableActions:
+            for act in deadActions:
+                bias[act] -= 2.5
+                anyBias = True
+
+        for act in viableActions:
+            target = env.neighbor(act)
+            edgeTuple = (pos[0], pos[1], int(act))
+            if edgeTuple in priorLoopEdges and target is not None and env.visitCountAt(target) > 0:
+                bias[act] -= 1.2
+                anyBias = True
+
+        if priorEdges:
+            unvisitedPrior = [
+                act
+                for act in viableActions
+                if env.neighbor(act) is not None
+                and env.visitCountAt(env.neighbor(act)) == 0
+                and (pos[0], pos[1], int(act)) not in priorEdges
+            ]
+            visitedPrior = [
+                act
+                for act in viableActions
+                if env.neighbor(act) is not None
+                and env.visitCountAt(env.neighbor(act)) == 0
+                and (pos[0], pos[1], int(act)) in priorEdges
+            ]
+            if unvisitedPrior and visitedPrior:
+                for act in unvisitedPrior:
+                    bias[act] += 0.55
+                    anyBias = True
+
+        return bias if anyBias else None
 
     def startEpisode(self, payload):
         _rejectSensitiveCredentials(payload)
@@ -168,7 +264,10 @@ class GameService:
             )
             isTestMap = bool(payload.get("is_test_map", sessionCfg.get("is_test_map", False))) if isinstance(payload, dict) else False
             customMaxSteps = int(payload.get("max_steps", self.maxSteps)) if isinstance(payload, dict) else self.maxSteps
+            enforceScoreLimit = payload.get("enforce_score_limit", None) if isinstance(payload, dict) else None
             modelVersion = int(self.meta.get("version", 1))
+            mazeKey = self._mazeKeyFor(mazeData, mapId=mapId)
+            priorMem = None if isCompetitive else self.mazeMemoriesByName.get(mazeKey)
 
             session = EpisodeSession(
                 sessionId=sessionId,
@@ -183,11 +282,14 @@ class GameService:
                 mapId=mapId,
                 mapHash=mapHash,
                 modelVersion=modelVersion,
+                enforceScoreLimit=enforceScoreLimit,
+                priorMazeMemory=priorMem,
             )
             self.sessions[sessionId] = session
             self.defaultSessionId = sessionId
             self._syncLegacyAttributes(session)
             state = session.environment.state()
+            mazeSummary = self.optimizationTracker.getMazeSummary(mazeKey) or {}
             return {
                 "success": True,
                 "session_id": sessionId,
@@ -198,7 +300,16 @@ class GameService:
                 "deterministic": deterministic,
                 "collect_experience": collectExperience,
                 "model_version": modelVersion,
+                "attempt_number": int(mazeSummary.get("totalAttempts", 0)) + 1,
+                "best_score": mazeSummary.get("bestScore"),
+                "best_official_score": mazeSummary.get("bestOfficialScore"),
+                "pending_episodes": self.experienceStore.pendingCount(),
+                "pending_samples": self.experienceStore.pendingSamplesCount(),
                 "observation": [float(x) for x in session.environment.observe()],
+                "local_view": session.environment.localView(normalize=False).tolist(),
+                "action_mask": [float(x) for x in session.environment.actionMask()],
+                "bone_locations": session.environment.boneLocations(),
+                "bone_observations": session.environment.boneObservations(),
                 "available_actions": session.environment.availableActions(),
                 "state": state,
                 **state,
@@ -216,13 +327,27 @@ class GameService:
     def reset(self, sessionId=None):
         with self.lock:
             session = self._getSession(sessionId)
-            session.reset(self.model)
+            modelVersion = int(self.meta.get("version", 1))
+            session.reset(self.model, modelVersion=modelVersion)
+            mazeKey = self._mazeKeyFor(session.mazeData, mapId=session.mapId)
+            self.mazeMemoriesByName[mazeKey] = session.environment.priorMazeMemory
             self._syncLegacyAttributes(session)
             state = session.environment.state()
+            mazeSummary = self.optimizationTracker.getMazeSummary(mazeKey) or {}
             return {
                 "success": True,
                 "session_id": session.sessionId,
+                "model_version": session.modelVersion,
+                "attempt_number": int(mazeSummary.get("totalAttempts", 0)) + 1,
+                "best_score": mazeSummary.get("bestScore"),
+                "best_official_score": mazeSummary.get("bestOfficialScore"),
+                "pending_episodes": self.experienceStore.pendingCount(),
+                "pending_samples": self.experienceStore.pendingSamplesCount(),
                 "observation": [float(x) for x in session.environment.observe()],
+                "local_view": session.environment.localView(normalize=False).tolist(),
+                "action_mask": [float(x) for x in session.environment.actionMask()],
+                "bone_locations": session.environment.boneLocations(),
+                "bone_observations": session.environment.boneObservations(),
                 "available_actions": session.environment.availableActions(),
                 "state": state,
                 **state,
@@ -254,12 +379,22 @@ class GameService:
             deterministic = bool(payload.get("deterministic", session.deterministic if session else False))
             activeModel = session.policyModel if session is not None else self.model
             stateIn = session.memory if session is not None else activeModel.initialState()
-            actionIdx, logProb, value, nextState = chooseAction(activeModel, obsVec, stateIn, deterministic=deterministic)
+            actMask = session.environment.actionMask() if session is not None else None
+            logitBias = self._computeSessionLogitBias(session) if (session is not None and not deterministic) else None
+            actionIdx, logProb, value, nextState = chooseAction(
+                activeModel,
+                obsVec,
+                stateIn,
+                deterministic=deterministic,
+                logitBias=logitBias,
+                actionMask=actMask,
+            )
 
             if session is not None:
                 session.pendingAction = {
                     "observation": obsVec,
                     "action": actionIdx,
+                    "actionMask": actMask.tolist() if actMask is not None else [1.0, 1.0, 1.0, 1.0],
                     "logProb": logProb,
                     "value": value,
                     "nextState": nextState,
@@ -273,6 +408,7 @@ class GameService:
                 "session_id": session.sessionId if session else None,
                 "action": actionIdx,
                 "action_name": actionToName(actionIdx),
+                "action_mask": actMask.tolist() if actMask is not None else [1.0, 1.0, 1.0, 1.0],
                 "log_prob": logProb,
                 "value": value,
                 "done": bool(session.environment.done) if session else False,
@@ -290,7 +426,9 @@ class GameService:
 
             deterministic = bool(payload.get("deterministic", session.deterministic))
             obsBefore = session.environment.observe()
+            maskBefore = session.environment.actionMask()
             activeModel = session.policyModel
+            logitBias = self._computeSessionLogitBias(session) if not deterministic else None
 
             if "action" in payload and payload["action"] is not None:
                 requestedAction = parseActionValue(payload["action"])
@@ -300,7 +438,14 @@ class GameService:
                     value = session.pendingAction["value"]
                     nextMemory = session.pendingAction["nextState"]
                 else:
-                    _, logProb, value, nextMemory = chooseAction(activeModel, obsBefore, session.memory, deterministic=deterministic)
+                    _, logProb, value, nextMemory = chooseAction(
+                        activeModel,
+                        obsBefore,
+                        session.memory,
+                        deterministic=deterministic,
+                        logitBias=logitBias,
+                        actionMask=maskBefore,
+                    )
                     actionIdx = requestedAction
             elif session.pendingAction is not None:
                 actionIdx = session.pendingAction["action"]
@@ -308,7 +453,14 @@ class GameService:
                 value = session.pendingAction["value"]
                 nextMemory = session.pendingAction["nextState"]
             else:
-                actionIdx, logProb, value, nextMemory = chooseAction(activeModel, obsBefore, session.memory, deterministic=deterministic)
+                actionIdx, logProb, value, nextMemory = chooseAction(
+                    activeModel,
+                    obsBefore,
+                    session.memory,
+                    deterministic=deterministic,
+                    logitBias=logitBias,
+                    actionMask=maskBefore,
+                )
 
             session.pendingAction = None
             session.memory = nextMemory
@@ -321,6 +473,7 @@ class GameService:
 
             session.trajectory["observations"].append(obsBefore)
             session.trajectory["actions"].append(actionIdx)
+            session.trajectory["actionMasks"].append(maskBefore.tolist())
             session.trajectory["logProbs"].append(logProb)
             session.trajectory["values"].append(value)
             session.trajectory["rewards"].append(reward)
@@ -340,7 +493,8 @@ class GameService:
             }
 
             if done and bool(payload.get("auto_end", True)):
-                endSummary = self._finalizeSession(session, scheduleLearn=session.collectExperience)
+                # Never auto-update policy weights when an episode ends; user controls PPO updates.
+                endSummary = self._finalizeSession(session, scheduleLearn=False)
                 result.update(endSummary)
 
             return result
@@ -353,9 +507,9 @@ class GameService:
         _rejectSensitiveCredentials(payload)
         with self.lock:
             session = self._getSession(payload.get("session_id"))
-            isCompetitive = str(session.mode).lower() == "competitive"
-            scheduleLearn = False if isCompetitive else bool(payload.get("learn", session.collectExperience))
-            summary = self._finalizeSession(session, scheduleLearn=scheduleLearn)
+            # User controls policy updates via /learn (Update RL Policy button).
+            # Completing an episode only records rollout experience by default.
+            summary = self._finalizeSession(session, scheduleLearn=False)
             return {
                 "success": True,
                 "session_id": session.sessionId,
@@ -363,7 +517,7 @@ class GameService:
                 "state": session.environment.state(),
             }
 
-    def _finalizeSession(self, session, scheduleLearn=True):
+    def _finalizeSession(self, session, scheduleLearn=False):
         if session.completed and session.lastSummary is not None:
             return dict(session.lastSummary)
         session.completed = True
@@ -371,26 +525,59 @@ class GameService:
 
         env = session.environment
         traj = session.trajectory
-        traj["won"] = bool(env.position in env.ends)
-        traj["timeout"] = bool(not traj["won"] and env.steps >= env.maxSteps)
+        mazeName = self._mazeKeyFor(session.mazeData, mapId=session.mapId)
+        traj["sourceMap"] = str(mazeName)
+        traj["modelVersion"] = int(session.modelVersion)
+        traj["won"] = bool(env.position in env.ends and not env.scoreLimitExceeded)
+        traj["scoreLimitExceeded"] = bool(env.scoreLimitExceeded)
+        traj["failed"] = bool(env.failed)
+        traj["timeout"] = bool(not traj["won"] and not env.scoreLimitExceeded and env.steps >= env.maxSteps)
         traj["score"] = int(env.currentScore())
+        traj["officialScore"] = int(env.currentScore())
+        traj["trainingScore"] = int(env.currentTrainingScore())
         traj["bonesCollected"] = int(env.bonesCollected())
         traj["totalBones"] = int(len(env.bones))
         traj["length"] = len(traj["actions"])
         traj["revisits"] = int(env.revisits)
+        traj["revisitPercentage"] = float(env.revisitPercentage())
         traj["wallBumps"] = int(env.wallBumps)
         traj["uniqueCells"] = int(len(env.visitCounts))
+        traj["discoveredCellsCount"] = int(len(env.discoveredCells))
+        traj["newAreasExplored"] = int(env.newAreasExploredCount())
+        traj["deadEndsEncountered"] = int(env.deadEndsEncountered)
+        traj["deadEndReentries"] = int(env.deadEndReentries)
+        traj["repeatedMistakes"] = int(env.totalMistakesCount())
+        traj["avoidedPreviousMistakes"] = int(env.avoidedPreviousMistakes)
+        traj["knownDeadEnds"] = [[int(p[0]), int(p[1])] for p in sorted(env.knownDeadEnds)]
+        traj["knownJunctions"] = [[int(p[0]), int(p[1])] for p in sorted(env.knownJunctions)]
+        traj["deadEndEdges"] = list(sorted(env.deadEndEdges))
+        traj["loopEdges"] = list(sorted(env.loopEdges))
+        traj["maxVisitCount"] = int(env.maxVisitCount())
+        traj["mostFrequentlyRevisitedCell"] = env.mostFrequentlyRevisitedCell()
+        traj["visitedCells"] = [[int(p[0]), int(p[1])] for p in env.visitCounts.keys()]
+        traj["collectedBones"] = [[int(p[0]), int(p[1])] for p in env.collectedBonesOrder]
+        traj["positionHistory"] = list(env.positionHistory)
+        traj["edgesTraversed"] = [(int(pos[0]), int(pos[1]), int(act)) for (pos, act) in env.edgeCounts.keys()]
         traj["totalReward"] = float(sum(traj["rewards"]))
         traj["rawTotalReward"] = float(sum(traj["rawRewards"]))
         traj["bootstrapValue"] = 0.0
 
         isCompetitive = str(session.mode).lower() == "competitive"
+        progressEvents = []
+        attemptOutcome = None
+        if not isCompetitive:
+            env._archiveEpisodeIntoPriorMemory()
+            self.mazeMemoriesByName[mazeName] = env.priorMazeMemory
+            attemptOutcome = self.optimizationTracker.recordAttempt(mazeName, traj)
+            progressEvents = self.progressReporter.recordAttemptOutcome(attemptOutcome, totalBones=traj["totalBones"])
+
         savedPath = None
         if not isCompetitive and session.collectExperience and not session.isTestMap:
             savedPath = self.experienceStore.addEpisode(
                 traj,
                 mazeData=session.mazeData,
                 isTestMap=session.isTestMap,
+                currentModelVersion=int(self.meta.get("version", session.modelVersion)),
             )
 
         learningStarted = False
@@ -408,7 +595,7 @@ class GameService:
             "map_id": session.mapId,
             "map_hash": session.mapHash,
             "action_trace": actionTrace,
-            "claimed_score": int(traj["score"]),
+            "claimed_score": int(traj["officialScore"]),
             "claimed_steps": int(traj["length"]),
             "claimed_bones_collected": int(traj["bonesCollected"]),
             "claimed_completed": bool(traj["won"]),
@@ -417,12 +604,26 @@ class GameService:
             "model_version": int(session.modelVersion),
         }
 
+        mazeSummary = self.optimizationTracker.getMazeSummary(mazeName) or {}
+        pendingEpisodes = self.experienceStore.pendingCount()
+        pendingSamples = self.experienceStore.pendingSamplesCount()
+
         out = {
             "episodeCompleted": True,
             "learningStarted": learningStarted,
+            "policyUpdated": False,
+            "pendingEpisodes": pendingEpisodes,
+            "pendingSamples": pendingSamples,
+            "attemptNumber": int(attemptOutcome["attemptNumber"]) if attemptOutcome else int(mazeSummary.get("totalAttempts", 1)),
+            "bestScore": mazeSummary.get("bestScore"),
+            "bestOfficialScore": mazeSummary.get("bestOfficialScore"),
+            "newAreasExplored": int(attemptOutcome.get("newAreasExplored", traj["newAreasExplored"])) if attemptOutcome else int(traj["newAreasExplored"]),
+            "deadEndsEncountered": int(traj["deadEndsEncountered"]),
+            "repeatedMistakes": int(traj["repeatedMistakes"]),
+            "avoidedPreviousMistakes": int(traj["avoidedPreviousMistakes"]),
             "action_trace": actionTrace,
             "action_names": [ACTION_NAMES[a] for a in actionTrace],
-            "claimed_score": int(traj["score"]),
+            "claimed_score": int(traj["officialScore"]),
             "claimed_steps": int(traj["length"]),
             "claimed_bones_collected": int(traj["bonesCollected"]),
             "claimed_completed": bool(traj["won"]),
@@ -430,17 +631,36 @@ class GameService:
             "model_version": int(session.modelVersion),
             "submission_id": submissionId,
             "submission_payload": submissionPayload,
+            "progress_events": progressEvents,
+            "progress_messages": [e["formatted"] for e in progressEvents],
             "episodeSummary": {
                 "won": traj["won"],
-                "score": traj["score"],
+                "failed": traj["failed"],
+                "scoreLimitExceeded": traj["scoreLimitExceeded"],
+                "score": traj["officialScore"],
+                "officialScore": traj["officialScore"],
+                "trainingScore": traj["trainingScore"],
+                "bestScore": mazeSummary.get("bestScore"),
+                "bestOfficialScore": mazeSummary.get("bestOfficialScore"),
+                "attemptNumber": int(attemptOutcome["attemptNumber"]) if attemptOutcome else int(mazeSummary.get("totalAttempts", 1)),
                 "steps": traj["length"],
                 "bonesCollected": traj["bonesCollected"],
                 "revisits": traj["revisits"],
+                "revisitPercentage": round(traj["revisitPercentage"], 2),
                 "uniqueCells": traj["uniqueCells"],
+                "newAreasExplored": int(attemptOutcome.get("newAreasExplored", traj["newAreasExplored"])) if attemptOutcome else int(traj["newAreasExplored"]),
+                "deadEndsEncountered": traj["deadEndsEncountered"],
+                "repeatedMistakes": traj["repeatedMistakes"],
+                "avoidedPreviousMistakes": traj["avoidedPreviousMistakes"],
+                "maxVisitCount": traj["maxVisitCount"],
+                "mostFrequentlyRevisitedCell": traj["mostFrequentlyRevisitedCell"],
                 "totalReward": round(traj["totalReward"], 4),
                 "actionTrace": actionTrace,
                 "finalPosition": finalPosition,
                 "modelVersion": int(session.modelVersion),
+                "pendingEpisodes": pendingEpisodes,
+                "pendingSamples": pendingSamples,
+                "policyUpdated": False,
             },
         }
         if savedPath is not None:
@@ -453,6 +673,7 @@ class GameService:
         _rejectSensitiveCredentials(payload)
         payload["mode"] = "competitive"
         payload["collect_experience"] = False
+        payload["enforce_score_limit"] = False
         payload.setdefault("deterministic", True)
 
         startInfo = self.startEpisode(payload)
@@ -512,6 +733,7 @@ class GameService:
                     session.trajectory,
                     mazeData=session.mazeData,
                     isTestMap=False,
+                    currentModelVersion=int(self.meta.get("version", session.modelVersion)),
                 )
         asyncRun = bool(payload.get("async", True))
         learnRes = self.learn(asyncRun=asyncRun)
@@ -525,9 +747,20 @@ class GameService:
     def learn(self, asyncRun=True):
         with self.lock:
             if self.learning:
-                return {"learning": True, "alreadyRunning": True}
+                return {
+                    "learning": True,
+                    "alreadyRunning": True,
+                    "pendingEpisodes": self.experienceStore.pendingCount(),
+                    "pendingSamples": self.experienceStore.pendingSamplesCount(),
+                }
             self.learning = True
-            recentEpisodes = self.experienceStore.popEpisodes(maxCount=8)
+            currentVersion = int(self.meta.get("version", 1))
+            recentEpisodes = self.experienceStore.popEpisodes(
+                maxCount=16,
+                requiredModelVersion=currentVersion,
+            )
+            consumedEpisodesCount = len(recentEpisodes)
+            consumedSamplesCount = int(sum(len(ep.get("actions", [])) for ep in recentEpisodes))
 
         def worker():
             try:
@@ -543,10 +776,29 @@ class GameService:
                 with self.lock:
                     self.meta = loadCheckpointFull(self.checkpoint, self.model)
                     self.model.eval()
+                    newVersion = int(self.meta.get("version", currentVersion + 1))
+                    self.experienceStore.clearStaleEpisodes(newVersion)
+                    for sess in self.sessions.values():
+                        if str(sess.mode).lower() != "competitive":
+                            sess.policyModel = self.model
+                            sess.modelVersion = newVersion
+                    self.policyUpdatedCount += 1
+                    metrics["policyUpdated"] = True
+                    metrics["consumedEpisodes"] = consumedEpisodesCount
+                    metrics["consumedSamples"] = consumedSamplesCount
+                    metrics["pendingEpisodes"] = self.experienceStore.pendingCount()
+                    metrics["pendingSamples"] = self.experienceStore.pendingSamplesCount()
                     self.lastTrainingMetrics = metrics
+                    for ev in metrics.get("progressEvents", []):
+                        self.progressReporter._emit(
+                            ev["title"],
+                            ev["message"],
+                            category=ev.get("category", "progress"),
+                            details=ev.get("details"),
+                        )
             except Exception as error:
                 with self.lock:
-                    self.lastTrainingMetrics = {"error": str(error)}
+                    self.lastTrainingMetrics = {"error": str(error), "policyUpdated": False}
                 print(f"Learning failed: {error}", flush=True)
             finally:
                 with self.lock:
@@ -554,20 +806,42 @@ class GameService:
 
         if asyncRun:
             threading.Thread(target=worker, daemon=True).start()
-            return {"learning": True}
+            return {
+                "learning": True,
+                "policyUpdated": False,
+                "updates": int(self.meta.get("updates", 0)),
+                "modelVersion": int(self.meta.get("version", 1)),
+                "consumedEpisodes": consumedEpisodesCount,
+                "consumedSamples": consumedSamplesCount,
+                "pendingEpisodes": self.experienceStore.pendingCount(),
+                "pendingSamples": self.experienceStore.pendingSamplesCount(),
+            }
         else:
             worker()
-            return {"learning": False, "completed": True, "metrics": self.lastTrainingMetrics}
+            return {
+                "learning": False,
+                "completed": True,
+                "policyUpdated": bool(self.lastTrainingMetrics.get("policyUpdated", False)),
+                "updates": int(self.meta.get("updates", 0)),
+                "modelVersion": int(self.meta.get("version", 1)),
+                "consumedEpisodes": consumedEpisodesCount,
+                "consumedSamples": consumedSamplesCount,
+                "pendingEpisodes": self.experienceStore.pendingCount(),
+                "pendingSamples": self.experienceStore.pendingSamplesCount(),
+                "metrics": self.lastTrainingMetrics,
+            }
 
     def agentStatus(self):
         with self.lock:
             meta = getCheckpointMetadata(self.checkpoint)
+            recentEvents = self.progressReporter.recentMessages(5)
             return {
                 "status": "ok",
                 "modelId": meta.get("modelId") or self.meta.get("modelId"),
                 "architecture": meta.get("architecture") or getattr(self.model, "architecture", None),
                 "modelVersion": int(meta.get("version", self.meta.get("version", 1))),
                 "updates": int(meta.get("updates", self.meta.get("updates", 0))),
+                "policyUpdatedCount": int(self.policyUpdatedCount),
                 "totalEpisodes": int(meta.get("totalEpisodes", 0)),
                 "totalSteps": int(meta.get("totalSteps", 0)),
                 "bestWinRate": float(meta.get("bestRate", 0.0)),
@@ -576,6 +850,10 @@ class GameService:
                 "activeSessions": len(self.sessions),
                 "playedMapsCount": len(self.experienceStore.listPlayedMaps()),
                 "pendingEpisodes": self.experienceStore.pendingCount(),
+                "pendingSamples": self.experienceStore.pendingSamplesCount(),
+                "optimization": self.optimizationTracker.globalSummary(),
+                "progressMessages": [e["formatted"] for e in recentEvents],
+                "latestProgress": recentEvents[-1]["formatted"] if recentEvents else None,
             }
 
     def trainingStatus(self):

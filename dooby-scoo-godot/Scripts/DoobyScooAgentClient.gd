@@ -35,7 +35,8 @@ func _request(method: int, endpoint: String, payload: Dictionary = {}) -> Dictio
 func _post(endpoint: String, payload: Dictionary) -> Dictionary:
 	return await _request(HTTPClient.METHOD_POST, endpoint, payload)
 
-func _get(endpoint: String) -> Dictionary:
+func _get(name: StringName) -> Variant:
+	var endpoint = str(name)
 	return await _request(HTTPClient.METHOD_GET, endpoint)
 
 func check_health() -> Dictionary:
@@ -92,7 +93,7 @@ func next_action(deterministic: bool = false) -> void:
 		if bool(result.get("done", false)):
 			episode_ended.emit(result)
 
-func end_episode(learn: bool = true) -> void:
+func end_episode(learn: bool = false) -> void:
 	var result := await _post("/episode/end", {"session_id": session_id, "learn": learn})
 	if result.has("error"):
 		request_failed.emit(str(result["error"]))
@@ -112,4 +113,3 @@ func learn_from_played_maps() -> void:
 		request_failed.emit(str(result["error"]))
 	else:
 		training_started.emit()
-

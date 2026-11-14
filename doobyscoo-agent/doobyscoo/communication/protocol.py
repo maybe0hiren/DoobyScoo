@@ -1,6 +1,11 @@
 import numpy as np
 from ..environment.maze_environment import ACTION_NAMES, NAME_TO_ACTION
-from ..environment.observation import OBSERVATION_SIZE, LEGACY_OBSERVATION_SIZE
+from ..environment.observation import (
+    LEGACY_OBSERVATION_SIZE,
+    OBSERVATION_SIZE,
+    PREVIOUS_OBSERVATION_SIZE,
+    V3_OBSERVATION_SIZE,
+)
 
 
 def parseActionValue(action):
@@ -28,12 +33,14 @@ def validateObservationInput(observation, sessionObservation=None):
         raise ValueError("Observation contains NaN or infinite values")
     if arr.shape[0] == OBSERVATION_SIZE:
         return arr
-    if arr.shape[0] == LEGACY_OBSERVATION_SIZE:
+    if arr.shape[0] in (V3_OBSERVATION_SIZE, PREVIOUS_OBSERVATION_SIZE, LEGACY_OBSERVATION_SIZE):
         if sessionObservation is not None and len(sessionObservation) == OBSERVATION_SIZE:
             merged = np.asarray(sessionObservation, dtype=np.float32).copy()
-            merged[:LEGACY_OBSERVATION_SIZE] = arr
+            merged[: arr.shape[0]] = arr
             return merged
         padded = np.zeros(OBSERVATION_SIZE, dtype=np.float32)
-        padded[:LEGACY_OBSERVATION_SIZE] = arr
+        padded[: arr.shape[0]] = arr
         return padded
-    raise ValueError(f"Expected {OBSERVATION_SIZE}-feature observation (or {LEGACY_OBSERVATION_SIZE} legacy), got {arr.shape[0]}")
+    raise ValueError(
+        f"Expected {OBSERVATION_SIZE}-feature observation (or {V3_OBSERVATION_SIZE}/{PREVIOUS_OBSERVATION_SIZE}/{LEGACY_OBSERVATION_SIZE} legacy), got {arr.shape[0]}"
+    )

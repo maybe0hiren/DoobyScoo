@@ -150,37 +150,57 @@ class EnvironmentTests(unittest.TestCase):
         self.assertLess(rewardRepeat, 0.0)
 
     def testFirstVisitRevisitAndRepeatedRevisitPenaltiesAndReset(self):
-        rc = RewardConfig(
-            movePenalty=-0.04,
-            noveltyReward=0.08,
-            revisitPenalty=-0.10,
-            repeatedRevisitPenalty=-0.05,
-            maxRevisitPenalty=-0.25,
-        )
+        rc = RewardConfig()
         env = MazeEnvironment(sampleMaze(), maxSteps=30, rewardConfig=rc)
-        # Step UP to (0, 1): first visit to (0, 1)
+        # Step UP to (0, 1): first visit to (0, 1) -> penalty is 0
         _, rFirst, _, infoFirst = env.step(0)
         self.assertTrue(infoFirst["newCell"])
         self.assertFalse(infoFirst["revisit"])
         self.assertEqual(infoFirst["visitCount"], 1)
+        self.assertEqual(rc.revisitPenaltyForVisit(1), 0.0)
         self.assertIn("novelty", infoFirst["rewardBreakdown"])
         self.assertNotIn("revisit", infoFirst["rewardBreakdown"])
-        self.assertAlmostEqual(rFirst, -0.04 + 0.08, places=5)
+        self.assertAlmostEqual(rFirst, rc.movePenalty + rc.noveltyReward, places=5)
 
-        # Step DOWN back to Start (0, 2): Start was visited at episode start (priorVisits=1)
-        _, rRev1, _, infoRev1 = env.step(1)
-        self.assertFalse(infoRev1["newCell"])
-        self.assertTrue(infoRev1["revisit"])
-        self.assertEqual(infoRev1["visitCount"], 2)
-        self.assertAlmostEqual(infoRev1["rewardBreakdown"]["revisit"], -0.10, places=5)
-
-        # Step UP to (0, 1) again (priorVisits=1 -> -0.10), then DOWN to (0, 2) again (priorVisits=2 -> -0.15)
-        env.step(0)
+        # Step DOWN back to Start (0, 2): 2nd visit -> penalty is -2
         _, rRev2, _, infoRev2 = env.step(1)
+        self.assertFalse(infoRev2["newCell"])
         self.assertTrue(infoRev2["revisit"])
-        self.assertEqual(infoRev2["visitCount"], 3)
-        self.assertAlmostEqual(infoRev2["rewardBreakdown"]["revisit"], -0.15, places=5)
-        self.assertLess(rRev2, rRev1)
+        self.assertEqual(infoRev2["visitCount"], 2)
+        self.assertAlmostEqual(infoRev2["rewardBreakdown"]["revisit"], -2.0, places=5)
+
+        # Step UP to (0, 1) (2nd visit -> -2), then DOWN to (0, 2) (3rd visit -> -4)
+        env.step(0)
+        _, rRev3, _, infoRev3 = env.step(1)
+        self.assertTrue(infoRev3["revisit"])
+        self.assertEqual(infoRev3["visitCount"], 3)
+        self.assertAlmostEqual(infoRev3["rewardBreakdown"]["revisit"], -4.0, places=5)
+        self.assertLess(rRev3, rRev2)
+
+        # Step UP to (0, 1) (3rd visit -> -4), then DOWN to (0, 2) (4th visit -> -6)
+        env.step(0)
+        _, rRev4, _, infoRev4 = env.step(1)
+        self.assertEqual(infoRev4["visitCount"], 4)
+        self.assertAlmostEqual(infoRev4["rewardBreakdown"]["revisit"], -6.0, places=5)
+
+        # Step UP to (0, 1) (4th visit -> -6), then DOWN to (0, 2) (5th visit -> -8)
+        env.step(0)
+        _, _, _, infoRev5 = env.step(1)
+        self.assertEqual(infoRev5["visitCount"], 5)
+        self.assertAlmostEqual(infoRev5["rewardBreakdown"]["revisit"], -8.0, places=5)
+
+        # Step UP to (0, 1) (5th visit -> -8), then DOWN to (0, 2) (6th visit -> capped at -8)
+        env.step(0)
+        _, _, _, infoRev6 = env.step(1)
+        self.assertEqual(infoRev6["visitCount"], 6)
+        self.assertAlmostEqual(infoRev6["rewardBreakdown"]["revisit"], -8.0, places=5)
+
+        # Verify revisit tracking metrics
+        self.assertEqual(env.revisits, 9)
+        self.assertEqual(len(env.visited), 2)
+        self.assertEqual(env.maxVisitCount(), 6)
+        self.assertEqual(env.mostFrequentlyRevisitedCell(), [0, 2])
+        self.assertAlmostEqual(env.revisitPercentage(), 90.0, places=5)
 
         # Reset must clear visitation history
         env.reset()
@@ -188,6 +208,99 @@ class EnvironmentTests(unittest.TestCase):
         self.assertEqual(env.visitCounts, {(0, 2): 1})
         self.assertEqual(env.pitVisitCounts, {})
         self.assertEqual(env.edgeCounts, {})
+
+    def testScoreLimit100EnforcementAndEpisodeRestart(self):
+        maze = sampleMaze()
+        # Add top wall on Start (0, 2) so action UP (0) bumps the wall in place without winning
+        maze["grid"][2][0]["top"] = True
+        maze["grid"][1][0]["bottom"] = True
+        env = MazeEnvironment(maze, maxSteps=500, enforceScoreLimit=True)
+
+        # Take 98 steps -> trainingScore == 98
+        for _ in range(98):
+            _, _, done, info = env.step(0)
+            self.assertFalse(done)
+
+        # Step 99 -> trainingScore == 99 (continues episode)
+        _, _, done99, info99 = env.step(0)
+        self.assertEqual(info99["trainingScore"], 99.0)
+        self.assertFalse(done99)
+        self.assertFalse(info99["failed"])
+        self.assertFalse(info99["scoreLimitExceeded"])
+
+        # Step 100 -> trainingScore == 100 (allowed; continues episode)
+        _, _, done100, info100 = env.step(0)
+        self.assertEqual(info100["trainingScore"], 100.0)
+        self.assertFalse(done100)
+        self.assertFalse(info100["failed"])
+        self.assertFalse(info100["scoreLimitExceeded"])
+
+        # Step 101 -> trainingScore == 101 (> 100 -> terminates immediately as failed)
+        _, reward101, done101, info101 = env.step(0)
+        self.assertEqual(info101["trainingScore"], 101.0)
+        self.assertTrue(done101)
+        self.assertFalse(info101["won"])
+        self.assertTrue(info101["failed"])
+        self.assertTrue(info101["scoreLimitExceeded"])
+        self.assertIn("scoreLimit", info101["rewardBreakdown"])
+        self.assertIn("failure", info101["rewardBreakdown"])
+        self.assertLess(reward101, -20.0)
+        self.assertEqual(len(env.actionHistory), 101)
+        self.assertEqual(len(env.positionHistory), 102)
+
+        # Restarting the episode resets episode state cleanly
+        env.reset()
+        self.assertFalse(env.done)
+        self.assertFalse(env.failed)
+        self.assertFalse(env.scoreLimitExceeded)
+        self.assertEqual(env.currentTrainingScore(), 0.0)
+        self.assertEqual(env.steps, 0)
+
+    def testFiveBoneCollectionRewardSchedule(self):
+        # Create a 3x3 maze with 5 Bones at (0,1), (0,0), (1,0), (2,0), (2,1) and End at (2,2)
+        grid = makeGrid(3, 3)
+        grid[2][0]["element"] = 1  # Start at (0, 2)
+        grid[2][2]["element"] = 2  # End at (2, 2)
+        boneCoords = [(0, 1), (0, 0), (1, 0), (2, 0), (2, 1)]
+        for bx, by in boneCoords:
+            grid[by][bx]["element"] = 4
+        maze = {"metadata": {"maze_name": "five_bone_test"}, "grid": grid}
+        env = MazeEnvironment(maze, maxSteps=50)
+
+        # Path to collect all 5 Bones in order: UP, UP, RIGHT, RIGHT, DOWN
+        actions = [0, 0, 3, 3, 1]
+        expectedReductions = [-10.0, -10.0, -10.0, -10.0, -20.0]
+        expectedBoneRewards = [10.0, 10.0, 10.0, 10.0, 20.0]
+        cumulativeReduction = 0.0
+
+        for idx, (act, expRed, expRew) in enumerate(zip(actions, expectedReductions, expectedBoneRewards), start=1):
+            _, _, done, info = env.step(act)
+            self.assertFalse(done)
+            self.assertTrue(info["bone"])
+            self.assertEqual(info["bonesCollected"], idx)
+            self.assertAlmostEqual(info["boneScoreReduction"], expRed, places=5)
+            self.assertAlmostEqual(info["boneReward"], expRew, places=5)
+            self.assertAlmostEqual(
+                info["rewardBreakdown"]["bone"] + info["rewardBreakdown"].get("allBones", 0.0),
+                expRew,
+                places=5,
+            )
+            cumulativeReduction += expRed
+            self.assertAlmostEqual(info["totalBoneScoreReduction"], cumulativeReduction, places=5)
+            self.assertAlmostEqual(info["trainingScore"], idx + cumulativeReduction, places=5)
+
+        # Total score reduction for collecting all 5 Bones must be -60.0
+        self.assertAlmostEqual(env.totalBoneScoreReduction, -60.0, places=5)
+        self.assertAlmostEqual(env.currentTrainingScore(), 5.0 - 60.0, places=5)
+        # Official score formula remains unchanged: Steps - 5 * Bones = 5 - 25 = -20
+        self.assertEqual(env.currentScore(), 5 - 5 * 5)
+
+        # Re-entering a collected Bone cell (UP to (2, 0)) gives no additional Bone reward
+        _, _, _, infoRepeat = env.step(0)
+        self.assertFalse(infoRepeat["bone"])
+        self.assertEqual(infoRepeat["boneScoreReduction"], 0.0)
+        self.assertNotIn("bone", infoRepeat["rewardBreakdown"])
+        self.assertAlmostEqual(env.totalBoneScoreReduction, -60.0, places=5)
 
     def testPitTeleportationVisitationTracking(self):
         env = MazeEnvironment(sampleMaze(), maxSteps=20)

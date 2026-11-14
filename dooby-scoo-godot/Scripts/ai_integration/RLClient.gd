@@ -115,7 +115,7 @@ func step_episode(
 	return await _request_json(HTTPClient.METHOD_POST, "/episode/step", payload)
 
 
-func end_episode(session_id: String, trigger_learn: bool = true) -> Dictionary:
+func end_episode(session_id: String, trigger_learn: bool = false) -> Dictionary:
 	var payload := {
 		"session_id": session_id,
 		"learn": trigger_learn

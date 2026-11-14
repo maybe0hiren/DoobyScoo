@@ -1,5 +1,4 @@
 from ..agent.ppo import computeAdvantages, updatePolicy, UpdateMetrics
-from ..evaluation.evaluator import evaluate
 from ..storage.checkpoint import (
     IncompatibleCheckpointError,
     bestCheckpointPath,
@@ -11,16 +10,26 @@ from ..storage.checkpoint import (
     saveCheckpoint,
 )
 from .curriculum import BalancedMapSampler
-from .metrics import TrainingMetricsTracker
+from .metrics import (
+    SIMPLE_TITLES,
+    LearningProgressReporter,
+    MazeOptimizationTracker,
+    TrainingMetricsTracker,
+    measureRouteDiversity,
+    trajectorySimilarity,
+)
 from .rehearsal import RehearsalManager
-from .rollout import collectEpisode, collectEpisodes, discoverMaps, gridHash
-from .trainer import train, continualLearnStep
+from .rollout import collectEpisode, collectEpisodes, collectRepeatedEpisodes, discoverMaps, gridHash
+from ..evaluation.evaluator import evaluate
+from .trainer import train, continualLearnStep, optimizeMaze
 
 __all__ = [
     "train",
     "continualLearnStep",
+    "optimizeMaze",
     "collectEpisode",
     "collectEpisodes",
+    "collectRepeatedEpisodes",
     "discoverMaps",
     "gridHash",
     "computeAdvantages",
@@ -38,4 +47,9 @@ __all__ = [
     "BalancedMapSampler",
     "RehearsalManager",
     "TrainingMetricsTracker",
+    "MazeOptimizationTracker",
+    "LearningProgressReporter",
+    "SIMPLE_TITLES",
+    "trajectorySimilarity",
+    "measureRouteDiversity",
 ]

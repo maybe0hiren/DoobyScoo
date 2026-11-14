@@ -8,9 +8,9 @@
 
 ---
 
-## 2. Partial Observation Specification (23 Features)
+## 2. Partial Observation Specification (95 Features, v4)
 
-The dog agent never receives the global maze layout. At each step, `ObservationEncoder` produces a 23-element `float32` vector normalized to `[0.0, 1.0]`:
+The dog agent never receives the global wall layout or undiscovered pit locations, but receives a 5×5 local view centred at its current position, legal action mask, discovered corridor/dead-end/junction structure, episodic exploration memory, and relative positional knowledge of all 5 Bones and the nearest End. At each step, `ObservationEncoder` produces a 95-element `float32` vector:
 
 | Index | Feature | Raw Values | Normalized Value |
 |---|---|---|---|
@@ -19,12 +19,18 @@ The dog agent never receives the global maze layout. At each step, `ObservationE
 | `5` | Current cell had **BONE** | `0.0` or `1.0` | `0.0` or `1.0` |
 | `6` | Current cell is **END** | `0.0` or `1.0` | `0.0` or `1.0` |
 | `7` | **Remaining Bones** ratio | `0..5` | `remaining / totalBones` |
-| `8` | Current cell **Visit Count** | `0..4+` | `min(1.0, (visits - 1) / 4.0)` |
-| `9..12` | Neighbor cell **Visit Counts** (**UP, DOWN, LEFT, RIGHT**) | `0..4+` (`1.0` if blocked) | `min(1.0, visits / 4.0)` |
-| `13..16` | **Last Action** one-hot (**UP, DOWN, LEFT, RIGHT**) | `0.0` or `1.0` | `0.0` or `1.0` |
-| `17` | **Last Move Blocked** (wall/boundary collision) | `0.0` or `1.0` | `0.0` or `1.0` |
-| `18` | **Step Progress** ratio | `0..maxSteps` | `min(1.0, steps / maxSteps)` |
-| `19..22` | Directed **Doorway Traversal Counts** (**UP, DOWN, LEFT, RIGHT**) | `0..3+` (`1.0` if blocked) | `min(1.0, edgeVisits / 3.0)` |
+| `8..11` | Neighbor cell **Visit Counts** (**UP, DOWN, LEFT, RIGHT**) | `0..4+` (`0.0` if blocked) | `min(visits, 4) / 4.0` |
+| `12` | Current cell **Visit Count** | `1..4+` | `min(visits, 4) / 4.0` |
+| `13..16` | Directed **Doorway Traversal Counts** (**UP, DOWN, LEFT, RIGHT**) | `0..4+` | `min(edgeVisits, 4) / 4.0` |
+| `17..20` | **Last Action** one-hot (**UP, DOWN, LEFT, RIGHT**) | `0.0` or `1.0` | `0.0` or `1.0` |
+| `21` | **Last Move Blocked** (wall/boundary collision) | `0.0` or `1.0` | `0.0` or `1.0` |
+| `22` | **Step Progress** ratio | `0..maxSteps` | `min(1.0, steps / maxSteps)` |
+| `23..37` | **5 Bone Slots** (`(dx, dy, isCollected)` × 5) | `dx = boneX - dogX`, `dy = boneY - dogY`, `collected in {0, 1}` | `(dx / (width - 1), dy / (height - 1), collected)` |
+| `38..62` | **5×5 Local View** centred at `(row=2, col=2)` | `0=BLOCKED, 1=EMPTY, 2=BONE, 3=END, 4=PIT, 5=UNKNOWN` | `raw / 5.0` |
+| `63..66` | **Legal Action Mask** (**UP, DOWN, LEFT, RIGHT**) | `0.0` or `1.0` | `0.0` or `1.0` |
+| `67..82` | **Dead-End & Junction Awareness** (16 features) | `isDeadEnd, isCorridor, isJunction, hasMultipleExits, exploredExits[4], unexploredExits[4], deadEndExits[4]` | `0.0` or `1.0` |
+| `83..88` | **Exploration Memory** (6 features) | `visitedRatio, discoveredRatio, deadEndRatio, junctionRatio, loopMistakeActive, noProgressNorm` | `[0.0, 1.0]` |
+| `89..94` | **Objective Awareness** (6 features) | `endDxNorm, endDyNorm, endDistNorm, targetDxNorm, targetDyNorm, objectiveProgress` | `[-1.0, 1.0]` |
 
 ---
 
@@ -81,7 +87,8 @@ Runs a complete competitive episode on the provided maze in one call using the f
 
 ### 3.5 `POST /competitive/learn`, `POST /episode/end`, and `POST /learn`
 - `POST /competitive/learn`: Opt-in post-match continual learning on a completed competitive session (`{"session_id": "..."}`).
-- `POST /episode/end` & `POST /learn`: Finalizes single-player episodes and triggers continual PPO + rehearsal updates.
+- `POST /episode/end`: Finalizes single-player episodes and records fresh on-policy rollouts in `ExperienceStore` while keeping policy weights frozen.
+- `POST /learn`: Explicitly triggered by the user via the **Update RL Policy** button to run PPO + rehearsal updates on collected rollouts.
 
 ---
 

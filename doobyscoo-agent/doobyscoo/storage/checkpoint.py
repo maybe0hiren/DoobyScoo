@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
-CHECKPOINT_FORMAT = 2
+CHECKPOINT_FORMAT = 4
 
 
 class IncompatibleCheckpointError(RuntimeError):
@@ -46,6 +46,8 @@ def _emptyMeta():
         "architecture": None,
         "mapHistory": {},
         "metricsHistory": [],
+        "optimizationState": {},
+        "progressHistory": [],
         "freshInit": None,
     }
 
@@ -66,6 +68,8 @@ def _metaFromPayload(payload):
         "architecture": payload.get("config", {}).get("architecture"),
         "mapHistory": payload.get("mapHistory", {}) or {},
         "metricsHistory": payload.get("metricsHistory", []) or [],
+        "optimizationState": payload.get("optimizationState", {}) or {},
+        "progressHistory": payload.get("progressHistory", []) or [],
         "freshInit": payload.get("freshInit"),
         "timestamp": payload.get("timestamp"),
     }
@@ -89,6 +93,12 @@ def checkCompatibility(payload, model):
         raise IncompatibleCheckpointError(
             f"Checkpoint architecture '{found or 'legacy-v1'}' does not match current '{expected}'. "
             "Old models are never partially loaded; train a fresh model with `python -m doobyscoo train --fresh`."
+        )
+    expectedObs = getattr(model, "observationSize", None)
+    foundObs = config.get("observationSize")
+    if expectedObs and foundObs is not None and int(foundObs) != int(expectedObs):
+        raise IncompatibleCheckpointError(
+            f"Checkpoint observationSize '{foundObs}' does not match current '{expectedObs}'."
         )
     stateDict = payload.get("model", {})
     currentDict = model.state_dict()
@@ -116,6 +126,8 @@ def saveCheckpoint(
     trainingConfig=None,
     mapHistory=None,
     metricsHistory=None,
+    optimizationState=None,
+    progressHistory=None,
     freshInit=None,
 ):
     """Atomically write a checkpoint (temp file + rename; previous file kept as .bak)."""
@@ -152,6 +164,8 @@ def saveCheckpoint(
         "trainingConfig": trainingConfig,
         "mapHistory": mapHistory or {},
         "metricsHistory": list(metricsHistory or [])[-500:],
+        "optimizationState": optimizationState or {},
+        "progressHistory": list(progressHistory or [])[-50:],
         "freshInit": freshInit,
         "timestamp": time.time(),
     }
@@ -177,10 +191,9 @@ def saveCheckpoint(
 
 
 def loadCheckpointFull(path, model, optimizer=None, restoreRng=False):
-    """Load weights strictly. A missing checkpoint returns loaded=False (caller decides
-    whether to start fresh); an incompatible checkpoint raises instead of silently
-    loading a subset of old weights. The .bak copy is only used when the main file
-    exists but is unreadable (e.g. interrupted write)."""
+    """Load weights strictly. A missing checkpoint returns loaded=False; an
+    incompatible checkpoint raises IncompatibleCheckpointError instead of
+    silently loading mismatched weights."""
     path = Path(path)
     if not path.exists():
         return _emptyMeta()
@@ -221,10 +234,17 @@ def loadCheckpoint(path, model, optimizer=None, restoreRng=False):
 
 def initializeFreshModel(path, model, seed=None, trainingConfig=None, reason="fresh"):
     """Write a brand-new randomly initialised model as version 0 of a new lineage."""
+    pathObj = Path(path)
+    if pathObj.exists():
+        recoverable = pathObj.with_name(f"{pathObj.stem}_recoverable{pathObj.suffix}.bak")
+        try:
+            shutil.copy2(pathObj, recoverable)
+        except OSError:
+            pass
     modelId = uuid.uuid4().hex[:12]
     freshInit = {"timestamp": time.time(), "seed": seed, "reason": reason, "modelId": modelId}
     for suffix in (".bak", ".tmp"):
-        stale = Path(path).with_suffix(Path(path).suffix + suffix)
+        stale = pathObj.with_suffix(pathObj.suffix + suffix)
         if stale.exists():
             stale.unlink()
     saveCheckpoint(

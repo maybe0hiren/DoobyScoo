@@ -52,6 +52,8 @@ func get_agent_status() -> Dictionary:
 		"modelVersion": 0,
 		"updates": 0,
 		"totalEpisodes": mock_episodes,
+		"pendingEpisodes": 0,
+		"pendingSamples": 0,
 		"totalSteps": steps,
 		"bestWinRate": 0.0,
 		"learning": false,

@@ -5,7 +5,7 @@ from doobyscoo.agent import RecurrentPolicy, RecurrentState, chooseAction
 from doobyscoo.config import defaultConfig, entropyCoefficient
 from doobyscoo.environment import MazeEnvironment, OBSERVATION_SIZE
 from doobyscoo.training import collectEpisode, updatePolicy
-from tests.test_environment import sampleMaze
+from tests.test_environment import makeGrid, sampleMaze
 
 
 class AgentTests(unittest.TestCase):
@@ -22,19 +22,72 @@ class AgentTests(unittest.TestCase):
         probs = dist.probs
         self.assertEqual(probs.shape, (1, 4))
         self.assertAlmostEqual(float(probs.sum().item()), 1.0, places=5)
-        self.assertTrue(bool((probs > 0.0).all().item()))
-        # Freshly initialized policy must have near-maximal entropy (~ln(4) = 1.386)
-        self.assertGreater(float(dist.entropy().item()), 1.30)
+        # At Start (0, 2) of sampleMaze, UP (0) and RIGHT (3) are legal; DOWN (1) and LEFT (2) are blocked
+        self.assertGreater(float(probs[0, 0].item()), 0.0)
+        self.assertEqual(float(probs[0, 1].item()), 0.0)
+        self.assertEqual(float(probs[0, 2].item()), 0.0)
+        self.assertGreater(float(probs[0, 3].item()), 0.0)
+        # Entropy over 2 legal actions is near ln(2) = 0.693
+        self.assertGreater(float(dist.entropy().item()), 0.65)
         self.assertIsInstance(nextState, RecurrentState)
 
-    def testStochasticTrainingVsDeterministicEvaluationActions(self):
-        torch.manual_seed(7)
+    def testLegalActionMaskingAndAllBlockedFallback(self):
+        torch.manual_seed(11)
         model = RecurrentPolicy()
         env = MazeEnvironment(sampleMaze(), 20)
         obs = env.observe()
         state = model.initialState()
 
-        # Stochastic sampling during training must produce multiple distinct actions
+        # Verify blocked actions (1=DOWN, 2=LEFT) are NEVER selected across 64 samples
+        sampled = [chooseAction(model, obs, state, deterministic=False)[0] for _ in range(64)]
+        self.assertTrue(all(a in (0, 3) for a in sampled))
+        self.assertEqual(set(sampled), {0, 3})
+
+        # Verify deterministic action is also strictly legal
+        detAction, detLogProb, _, _ = chooseAction(model, obs, state, deterministic=True)
+        self.assertIn(detAction, (0, 3))
+        self.assertTrue(float("-inf") < detLogProb <= 0.0)
+
+        # In a cell where all 4 directions are open (centre (1, 1) of an open 3x3 grid), all 4 actions have > 0 probability
+        grid = makeGrid(3, 3)
+        grid[1][1]["element"] = 1  # Start at (1, 1)
+        grid[0][2]["element"] = 2
+        openEnv = MazeEnvironment({"metadata": {"maze_name": "open_center"}, "grid": grid}, 20)
+        openObs = openEnv.observe()
+        openLogits, _, _ = model.forwardStep(openObs, state)
+        openDist = Categorical(logits=openLogits)
+        self.assertTrue(bool((openDist.probs > 0.0).all().item()))
+        self.assertGreater(float(openDist.entropy().item()), 1.30)
+
+        # If all 4 directions are blocked (sealed cell), fallback must keep probabilities valid and finite (no NaNs)
+        sealedGrid = makeGrid(3, 3)
+        sealedGrid[2][0]["element"] = 1
+        sealedGrid[0][2]["element"] = 2
+        sealedGrid[2][0]["top"] = True
+        sealedGrid[1][0]["bottom"] = True
+        sealedGrid[2][0]["right"] = True
+        sealedGrid[2][1]["left"] = True
+        sealedEnv = MazeEnvironment({"metadata": {"maze_name": "sealed"}, "grid": sealedGrid}, 20)
+        sealedObs = sealedEnv.observe()
+        sealedLogits, _, _ = model.forwardStep(sealedObs, state)
+        sealedDist = Categorical(logits=sealedLogits)
+        self.assertFalse(bool(torch.isnan(sealedDist.probs).any().item()))
+        self.assertAlmostEqual(float(sealedDist.probs.sum().item()), 1.0, places=5)
+        act, lp, val, _ = chooseAction(model, sealedObs, state, deterministic=False)
+        self.assertIn(act, range(4))
+        self.assertFalse(torch.isnan(torch.tensor([lp, val])).any().item())
+
+    def testStochasticTrainingVsDeterministicEvaluationActions(self):
+        torch.manual_seed(7)
+        model = RecurrentPolicy()
+        grid = makeGrid(3, 3)
+        grid[1][1]["element"] = 1  # Start at (1, 1) with all 4 directions legal
+        grid[0][2]["element"] = 2
+        env = MazeEnvironment({"metadata": {"maze_name": "center_start"}, "grid": grid}, 20)
+        obs = env.observe()
+        state = model.initialState()
+
+        # Stochastic sampling during training must produce multiple distinct legal actions
         sampledActions = {chooseAction(model, obs, state, deterministic=False)[0] for _ in range(32)}
         self.assertGreaterEqual(len(sampledActions), 3)
 
@@ -51,7 +104,7 @@ class AgentTests(unittest.TestCase):
         self.assertTrue(torch.allclose(state.h, torch.zeros_like(state.h)))
 
         action, _, _, nextState = chooseAction(model, obs, state, deterministic=False)
-        self.assertIn(action, range(4))
+        self.assertIn(action, (0, 3))
         self.assertEqual(nextState.stepCount, 1)
         self.assertFalse(torch.allclose(nextState.h, torch.zeros_like(nextState.h)))
 
@@ -85,7 +138,7 @@ class AgentTests(unittest.TestCase):
         optimizer = torch.optim.Adam(model.parameters(), lr=0.0005)
         metrics = updatePolicy(model, optimizer, episodes, epochs=1, entropyCoef=c0)
         self.assertTrue(float("-inf") < float(metrics) < float("inf"))
-        self.assertGreater(metrics.entropy, 0.5)
+        self.assertGreater(metrics.entropy, 0.3)
         self.assertAlmostEqual(metrics.entropyCoef, c0, places=5)
 
 

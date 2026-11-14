@@ -26,6 +26,14 @@ var step_in_progress: bool = false
 var step_timer: float = 0.0
 var step_interval: float = 0.18
 var total_bones_in_maze: int = 5
+var current_attempt_number: int = 1
+var current_best_score = null
+var current_revisits: int = 0
+var current_new_areas: int = 1
+var pending_episodes_count: int = 0
+var pending_samples_count: int = 0
+var last_known_updates: int = 0
+var last_known_model_version: int = 1
 
 
 func _ready() -> void:
@@ -142,9 +150,18 @@ func _on_session_started(data: Dictionary) -> void:
 	board.setup_board(MazeSession.loaded_maze["grid"])
 	stepBtn.disabled = false
 	autoPlayBtn.disabled = false
+	current_attempt_number = int(data.get("attempt_number", current_attempt_number))
+	if data.get("best_score", null) != null:
+		current_best_score = int(data.get("best_score"))
+	pending_episodes_count = int(data.get("pending_episodes", pending_episodes_count))
+	pending_samples_count = int(data.get("pending_samples", pending_samples_count))
+	var st: Dictionary = data.get("state", {})
+	current_revisits = int(st.get("revisits", 0))
+	current_new_areas = int(st.get("discoveredCellsCount", 1))
+	_update_learn_button()
 	var mode_badge := "[MOCK CLIENT]" if adapter.use_mock else ("[EVAL MODE]" if modeSelect.selected == 1 else "[TRAINING MODE]")
 	var ver := int(data.get("model_version", 0))
-	actionLogLabel.text = "%s Session ready (Model v%d). Press Auto-Play or Step!" % [mode_badge, ver]
+	actionLogLabel.text = "Training Started — %s Attempt #%d (Model v%d | Pending: %d eps)" % [mode_badge, current_attempt_number, ver, pending_episodes_count]
 	_refresh_scoreboard("Ready")
 
 
@@ -154,9 +171,23 @@ func _on_step_completed(result: Dictionary) -> void:
 	var steps := int(result.get("steps", score_manager.actual_steps + 1))
 	var bones := int(result.get("bonesCollected", score_manager.bones_collected))
 	var won := bool(result.get("won", false))
-	var timeout := bool(result.get("timeout", false))
+	var score_limit := bool(result.get("scoreLimitExceeded", false))
+	var timeout := bool(result.get("timeout", false)) or score_limit
 	var reward := float(result.get("reward", 0.0))
 	score_manager.sync_from_state(steps, bones, won, timeout, score_manager.cumulative_rl_reward + reward)
+
+	current_revisits = int(result.get("revisits", current_revisits))
+	var prev_areas := current_new_areas
+	current_new_areas = int(result.get("discoveredCellsCount", current_new_areas))
+	if result.has("attemptNumber"):
+		current_attempt_number = int(result.get("attemptNumber"))
+	if result.get("bestScore", null) != null:
+		current_best_score = int(result.get("bestScore"))
+	if result.has("pendingEpisodes"):
+		pending_episodes_count = int(result.get("pendingEpisodes"))
+	if result.has("pendingSamples"):
+		pending_samples_count = int(result.get("pendingSamples"))
+	_update_learn_button()
 
 	var act_name := str(result.get("action_name", result.get("action", "?"))).to_upper()
 	var notes: Array[String] = []
@@ -165,21 +196,30 @@ func _on_step_completed(result: Dictionary) -> void:
 	if bool(result.get("teleported", false)):
 		notes.append("Pit teleport!")
 	if bool(result.get("bone", false)):
-		notes.append("Bone collected! (-5 score)")
+		notes.append("Bone Collected")
+	elif current_new_areas > prev_areas:
+		notes.append("Exploring New Area (%d cells)" % current_new_areas)
+	if bool(result.get("enteredDeadEnd", false)):
+		notes.append("Dead End Found")
 	if won:
 		notes.append("Reached Goal!")
+	elif score_limit:
+		notes.append("Score > 100 (Learning from Failure)")
 	elif timeout:
 		notes.append("Max steps reached")
 
 	var extra := (" | " + ", ".join(notes)) if !notes.is_empty() else ""
-	actionLogLabel.text = "Action: %s -> Pos (%d, %d)%s" % [
+	actionLogLabel.text = "Attempt #%d | %s -> (%d, %d) | Revisits: %d | Explored: %d%s" % [
+		current_attempt_number,
 		act_name,
 		board.dog.grid_position.x,
 		board.dog.grid_position.y,
+		current_revisits,
+		current_new_areas,
 		extra
 	]
 
-	var status_txt := "Victory!" if won else ("Timeout" if timeout else "Navigating...")
+	var status_txt := "Victory!" if won else ("Score > 100" if score_limit else ("Timeout" if timeout else "Attempt #%d" % current_attempt_number))
 	_refresh_scoreboard(status_txt)
 
 
@@ -189,28 +229,68 @@ func _on_episode_ended(result: Dictionary) -> void:
 	stepBtn.disabled = true
 
 	var won := bool(result.get("won", score_manager.completed))
+	var score_limit := bool(result.get("scoreLimitExceeded", false))
 	var final_score := score_manager.get_score()
+	var training_score := int(result.get("trainingScore", final_score))
 	var steps := score_manager.actual_steps
 	var bones := score_manager.bones_collected
 	var learning_started := bool(result.get("learningStarted", false))
+	var prog_msgs: Array = result.get("progress_messages", [])
+	current_revisits = int(result.get("revisits", current_revisits))
+	current_new_areas = int(result.get("discoveredCellsCount", result.get("newAreasExplored", current_new_areas)))
+	if result.has("attemptNumber"):
+		current_attempt_number = int(result.get("attemptNumber"))
+	if result.get("bestScore", null) != null:
+		current_best_score = int(result.get("bestScore"))
+	elif won and (current_best_score == null or training_score < int(current_best_score)):
+		current_best_score = training_score
+	if result.has("pendingEpisodes"):
+		pending_episodes_count = int(result.get("pendingEpisodes"))
+	if result.has("pendingSamples"):
+		pending_samples_count = int(result.get("pendingSamples"))
+	_update_learn_button()
 
-	var headline := "Dooby Solved the Maze!" if won else "Episode Ended (Step Limit Reached)"
+	var headline := "Dooby Solved the Maze!" if won else ("Learning from Failure (Training Score > 100)" if score_limit else "Episode Ended (Step Limit Reached)")
+	var best_txt := str(current_best_score) if current_best_score != null else "N/A"
 	var learn_note := ""
+	if !prog_msgs.is_empty():
+		var joined_prog := ""
+		for m in prog_msgs:
+			joined_prog += "\n• " + str(m)
+		learn_note += "\n\nLearning Progress:" + joined_prog
+		actionLogLabel.text = str(prog_msgs[0])
 	if adapter.use_mock:
-		learn_note = "\n\n[Mock Testing Client: No neural network weights were modified.]"
+		learn_note += "\n\n[Mock Testing Client: No neural network weights were modified.]"
 	elif learning_started:
-		learn_note = "\n\nContinuous Learning: Experience saved & PPO rehearsal update started on Python server!"
+		learn_note += "\n\nUpdate RL Policy: PPO policy update started!"
 	elif collectExpCheck.button_pressed:
-		learn_note = "\n\nExperience recorded in Python ExperienceStore."
+		learn_note += "\n\nTrajectory recorded (%d episodes, %d samples waiting). Policy stays frozen until you press Update RL Policy." % [pending_episodes_count, pending_samples_count]
 
-	resultDialog.title = "Victory!" if won else "Attempt Finished"
+	resultDialog.title = "New Best Score" if (won and !prog_msgs.is_empty()) else ("Victory!" if won else ("Learning from Failure" if score_limit else "Attempt Finished"))
 	resultDialog.dialog_text = (
-		"%s\n\n"
-		+ "Final Score: %d (lower is better)\n"
-		+ "Steps Taken: %d\n"
-		+ "Bones Collected: %d / %d (-%d steps)%s"
-	) % [headline, final_score, steps, bones, total_bones_in_maze, bones * score_manager.bone_reward_value, learn_note]
+		"%s (Attempt #%d)\n\n"
+		+ "Current Score: %d | Training Score: %d (Best: %s, limit 100)\n"
+		+ "Steps Taken: %d | Revisited Cells: %d | New Areas Explored: %d\n"
+		+ "Bones Collected: %d / %d (-%d official score)\n"
+		+ "Episodes Waiting for Policy Update: %d (%d samples)%s"
+	) % [
+		headline,
+		current_attempt_number,
+		final_score,
+		training_score,
+		best_txt,
+		steps,
+		current_revisits,
+		current_new_areas,
+		bones,
+		total_bones_in_maze,
+		bones * score_manager.bone_reward_value,
+		pending_episodes_count,
+		pending_samples_count,
+		learn_note
+	]
 	resultDialog.popup_centered()
+	_refresh_scoreboard("Victory!" if won else ("Score > 100" if score_limit else "Finished"))
 	await adapter.fetch_status()
 
 
@@ -222,19 +302,36 @@ func _on_status_received(status: Dictionary) -> void:
 		var ver := int(status.get("modelVersion", 1))
 		var ups := int(status.get("updates", 0))
 		var eps := int(status.get("totalEpisodes", 0))
+		pending_episodes_count = int(status.get("pendingEpisodes", pending_episodes_count))
+		pending_samples_count = int(status.get("pendingSamples", pending_samples_count))
+		_update_learn_button()
 		var is_learning := bool(status.get("learning", false))
-		var state_tag := " [Training...]" if is_learning else " [Online]"
-		serverStatusLabel.text = "Python RL%s | Model v%d | Updates: %d | Episodes: %d" % [state_tag, ver, ups, eps]
+		var state_tag := " [Updating Policy...]" if is_learning else " [Policy Frozen]"
+		serverStatusLabel.text = "Python RL%s | Model v%d | Updates: %d | Pending: %d eps (%d steps) | Total: %d" % [
+			state_tag, ver, ups, pending_episodes_count, pending_samples_count, eps
+		]
 		serverStatusLabel.modulate = Color(0.55, 1.0, 0.65)
+		if ups > last_known_updates and last_known_updates > 0:
+			actionLogLabel.text = "Update RL Policy — Policy updated to Model v%d (Update #%d)!" % [ver, ups]
+		var latest_prog = status.get("latestProgress", null)
+		if latest_prog != null and str(latest_prog) != "" and actionLogLabel.text.begins_with("Update RL Policy — Continual"):
+			actionLogLabel.text = str(latest_prog)
+		last_known_updates = ups
+		last_known_model_version = ver
 
 
-func _on_learning_started(_data: Dictionary) -> void:
+func _on_learning_started(data: Dictionary) -> void:
 	if adapter.use_mock:
 		actionLogLabel.text = "Mock Client active: switch to Mode A/B with Python server for real PPO training."
 	else:
-		actionLogLabel.text = "Continual PPO update + rehearsal triggered on Python server!"
+		var ver := int(data.get("modelVersion", last_known_model_version))
+		var ups := int(data.get("updates", last_known_updates))
+		actionLogLabel.text = "Update RL Policy — Running PPO update on %d pending episodes (%d samples)..." % [pending_episodes_count, pending_samples_count]
 		await get_tree().create_timer(0.6).timeout
-		await adapter.fetch_status()
+		var st := await adapter.fetch_status()
+		var new_ver := int(st.get("modelVersion", ver))
+		var new_ups := int(st.get("updates", ups))
+		actionLogLabel.text = "Update RL Policy — Policy updated! Now using Model v%d (Updates: %d)." % [new_ver, new_ups]
 
 
 func _on_integration_error(message: String) -> void:
@@ -252,6 +349,12 @@ func _refresh_scoreboard(status_text: String) -> void:
 	bonesValueLabel.text = "%d / %d" % [score_manager.bones_collected, total_bones_in_maze]
 	scoreValueLabel.text = str(score_manager.get_score())
 	statusValueLabel.text = status_text
+
+
+func _update_learn_button() -> void:
+	if learnBtn == null:
+		return
+	learnBtn.text = "Update RL Policy"
 
 
 func _update_autoplay_button() -> void:

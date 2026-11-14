@@ -16,6 +16,8 @@ class ExperienceStore:
         self.maxBufferEpisodes = int(maxBufferEpisodes)
         self.episodeBuffer = []
         self.totalRecordedEpisodes = 0
+        self.totalRecordedSteps = 0
+        self.staleDroppedCount = 0
         self.mapPlayCounts = {}
         self.hashIndex = {}
         self._indexExcludedHashes()
@@ -86,7 +88,7 @@ class ExperienceStore:
         self.hashIndex[gridHash] = targetPath
         return targetPath
 
-    def addEpisode(self, episode, mazeData=None, sourcePath=None, isTestMap=False):
+    def addEpisode(self, episode, mazeData=None, sourcePath=None, isTestMap=False, currentModelVersion=None):
         if isTestMap or self._isExcludedPath(sourcePath):
             return None
         if mazeData is not None and self._gridHash(mazeData) in self.excludedHashes:
@@ -95,8 +97,15 @@ class ExperienceStore:
         if mazeData is not None:
             savedPath = self.registerPlayedMap(mazeData, sourcePath=sourcePath, isTestMap=isTestMap)
         if episode and len(episode.get("actions", [])) > 0:
+            if currentModelVersion is not None:
+                epVer = episode.get("modelVersion")
+                if epVer is not None and int(epVer) != int(currentModelVersion):
+                    self.staleDroppedCount += 1
+                    return savedPath
+                episode["modelVersion"] = int(currentModelVersion)
             self.episodeBuffer.append(episode)
             self.totalRecordedEpisodes += 1
+            self.totalRecordedSteps += len(episode.get("actions", []))
             if len(self.episodeBuffer) > self.maxBufferEpisodes:
                 self.episodeBuffer.pop(0)
         return savedPath
@@ -104,7 +113,29 @@ class ExperienceStore:
     def pendingCount(self):
         return len(self.episodeBuffer)
 
-    def popEpisodes(self, maxCount=None):
+    def pendingSamplesCount(self):
+        return int(sum(len(ep.get("actions", [])) for ep in self.episodeBuffer))
+
+    def clearStaleEpisodes(self, activeModelVersion):
+        """Remove any buffered trajectories collected under an older policy version
+        so PPO updates strictly use fresh on-policy rollouts."""
+        if activeModelVersion is None:
+            return 0
+        kept = []
+        dropped = 0
+        for ep in self.episodeBuffer:
+            epVer = ep.get("modelVersion")
+            if epVer is None or int(epVer) == int(activeModelVersion):
+                kept.append(ep)
+            else:
+                dropped += 1
+        self.episodeBuffer = kept
+        self.staleDroppedCount += dropped
+        return dropped
+
+    def popEpisodes(self, maxCount=None, requiredModelVersion=None):
+        if requiredModelVersion is not None:
+            self.clearStaleEpisodes(requiredModelVersion)
         if maxCount is None or maxCount >= len(self.episodeBuffer):
             batch = list(self.episodeBuffer)
             self.episodeBuffer.clear()

@@ -19,18 +19,18 @@ doobyscoo-agent/
 │   ├── server.py
 │   ├── environment/
 │   │   ├── validation.py
-│   │   ├── observation.py         # 23-feature partial observation + episodic visit memory
-│   │   └── maze_environment.py    # Configurable rewards, revisit penalties & pit visit tracking
+│   │   ├── observation.py         # 38-feature partial observation (local + visit memory + 5 Bone locations)
+│   │   └── maze_environment.py    # Score limit 100, revisit schedule (0,-2,-4,-6,-8) & Bone schedule (-10..-20)
 │   ├── agent/
 │   │   ├── recurrent_state.py     # Per-episode LSTM hidden state (h, c)
-│   │   ├── network.py             # Direction-equivariant RecurrentPolicy (doobyscoo-recurrent-ppo-v2)
+│   │   ├── network.py             # Direction-equivariant RecurrentPolicy (doobyscoo-recurrent-ppo-v3)
 │   │   └── ppo.py                 # Multi-horizon GAE + Recurrent PPO + directional utility learner
 │   ├── training/
-│   │   ├── rollout.py             # Vectorised multi-maze rollout collector
+│   │   ├── rollout.py             # Vectorised multi-maze & repeated-attempt rollout collector
 │   │   ├── curriculum.py          # Shuffled-deck BalancedMapSampler with struggle slots
 │   │   ├── rehearsal.py           # Fresh on-policy RehearsalManager (excludes test/val by path & hash)
-│   │   ├── metrics.py             # Full training telemetry (wins, score, bones, revisits, unique cells, entropy)
-│   │   └── trainer.py             # Fresh training, resume, adaptive retention & checkpointing
+│   │   ├── metrics.py             # MazeOptimizationTracker, LearningProgressReporter & training telemetry
+│   │   └── trainer.py             # optimizeMaze(), fresh training, resume, adaptive retention & checkpointing
 │   ├── evaluation/
 │   │   ├── evaluator.py           # Deterministic per-map & aggregate evaluation
 │   │   ├── comparison.py          # Baseline & checkpoint comparison
@@ -57,9 +57,9 @@ doobyscoo-agent/
 
 ---
 
-## 2. Partial Observation Space (23 Features)
+## 2. Partial Observation Space (38 Features)
 
-The Dog never sees the global maze or shortest-path hints. At every step, `ObservationEncoder` produces a normalized 23-element `float32` vector in `[0.0, 1.0]`:
+The Dog never sees the global wall grid, pit locations, or shortest-path hints, but is given knowledge of all five Bone locations from the start of the episode. At every step, `ObservationEncoder` produces a normalized 38-element `float32` vector (`[0.0, 1.0]` for indices `0..22` and `[-1.0, 1.0]` for relative Bone displacements at `23..37`):
 
 | Indices | Feature | Encoding |
 |---|---|---|
@@ -74,20 +74,25 @@ The Dog never sees the global maze or shortest-path hints. At every step, `Obser
 | `17..20` | Previous action one-hot (`UP, DOWN, LEFT, RIGHT`) | `0.0` or `1.0` (all zeros at step 0) |
 | `21` | Previous action bumped into a wall | `0.0` or `1.0` |
 | `22` | Elapsed step ratio | `steps / maxSteps` |
+| `23..37` | 5 Bone slots (`(dxNorm, dyNorm, isCollected)` × 5) | `dxNorm = (boneX - dogX) / max(1, width - 1)`, `dyNorm = (boneY - dogY) / max(1, height - 1)` (`0.0` once collected), `isCollected` in `{0.0, 1.0}` |
 
 ---
 
-## 3. Centralized Reward & Exploration Configuration
+## 3. Centralized Reward, Score Limit & Exploration Configuration
 
-Configured in `doobyscoo/config.py` and `config/training_config.json` (while keeping the official game score formula `Official Score = Steps - 5 * Bones Collected` untouched):
+Configured in `doobyscoo/config.py` and `config/training_config.json` (while keeping the official multiplayer score formula `Official Score = Steps - 5 * Bones Collected` untouched):
 
-- **Ordinary movement (`movePenalty`)**: `-0.04`
-- **Novelty bonus (`noveltyReward`)**: `+0.08` (awarded only on the first visit to a square in an episode)
-- **Bone collection (`boneReward`)**: `+3.50` (once per Bone; ~88× the movement cost) + `allBonesBonus`: `+2.00` when all Bones in the maze are collected
-- **Reaching an End (`endReward`)**: `+10.00`
-- **Revisit penalty (`revisitPenalty` / `repeatedRevisitPenalty` / `maxRevisitPenalty`)**: `-0.08` on first revisit, `-0.04` per additional prior visit, capped at `-0.24` so necessary backtracking out of dead ends remains preferable to wall collisions
-- **Wall collision (`wallPenalty`)**: `-0.60` (on top of `movePenalty`)
-- **Step limit / failed episode (`stepLimitPenalty` / `failurePenalty`)**: `-2.00` / `-3.00`
+- **Training Score & Maximum Score Limit (`maxScoreLimit = 100`)**:
+  - `Training Score = Steps + totalBoneScoreReduction` (`+1` per step; `-10` for Bones 1..4; `-20` for the 5th Bone).
+  - Scores `<= 100` (including `99` and `100`) are allowed; if `trainingScore > 100` (`>= 101`), the episode terminates immediately as failed (`scoreLimitPenalty = -15.0`, `failurePenalty = -10.0`), the failed trajectory is included in on-policy PPO updates, and a fresh attempt starts automatically.
+- **Revisit Penalty Schedule (`firstVisitPenalty`, `revisitPenalty`, `repeatedRevisitPenalty`, `maxRevisitPenalty`)**:
+  - 1st visit: `0`, 2nd visit: `-2`, 3rd visit: `-4`, 4th visit: `-6`, 5th+ visits: `-8` (capped at `-8`).
+- **Bone Collection Schedule (`boneScoreReduction`, `fifthBoneScoreReduction`, `boneReward`, `fifthBoneReward`)**:
+  - Bones 1..4: `-10` training score reduction (`+10.0` RL reward) each.
+  - 5th Bone (completing all 5): `-20` training score reduction (`+20.0` RL reward; total `-60` score reduction / `+60.0` reward for all 5 Bones).
+- **Ordinary movement (`movePenalty`)**: `-0.50` + **Novelty bonus (`noveltyReward`)**: `+1.50` on first visit
+- **Reaching an End (`endReward`)**: `+25.00`
+- **Wall collision (`wallPenalty`)**: `-12.00`
 
 ---
 

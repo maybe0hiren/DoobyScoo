@@ -1,78 +1,93 @@
 """Centralized, serializable training configuration for the DoobyScoo RL agent.
 
-Every reward, exploration, PPO, rehearsal and sampling knob lives here so that no
-value is hardcoded across modules. Configs are stored inside checkpoints and can
-be loaded from / written to JSON (see config/training_config.json).
+Every reward, score limit, revisit penalty, bone reward, exploration, PPO, rehearsal
+and sampling knob lives here so that no value is hardcoded across modules.
+Official multiplayer scoring (Official Score = Steps - 5 * Bones Collected) is
+completely separate and never altered by training configuration.
 """
 import copy
 import json
 from pathlib import Path
 
 DEFAULT_CONFIG = {
-    # RL training reward (shaping). Completely separate from the official score
-    # (Official Score = Steps - 5 * Bones Collected), which is never changed here.
     "reward": {
-        "movePenalty": -0.04,            # every step taken (ordinary movement cost)
-        "boneReward": 3.5,               # once per bone (~88x the movement cost)
-        "allBonesBonus": 2.0,            # extra once when the last bone is collected
-        "endReward": 10.0,               # reaching an End
-        "wallPenalty": -0.60,            # bumping into a wall / boundary (always worse than backtracking)
-        "revisitPenalty": -0.08,         # entering a square visited once before
-        "repeatedRevisitPenalty": -0.04, # extra penalty per additional prior visit
-        "maxRevisitPenalty": -0.24,      # cap so necessary backtracking stays affordable
-        "noveltyReward": 0.08,           # intrinsic: first visit to a square this episode
-        "stepLimitPenalty": -2.0,        # episode hit maxSteps
-        "failurePenalty": -3.0,          # episode ended without reaching an End
+        "maxScoreLimit": 100.0,            # training episode terminates immediately when trainingScore > 100
+        "stepScoreCost": 1.0,              # each step adds +1 to training score
+        "boneScoreReduction": -10.0,       # Bones 1..4 each reduce training score by -10
+        "fifthBoneScoreReduction": -20.0,  # 5th Bone reduces training score by -20 (total -60 for all 5)
+        "movePenalty": -0.5,               # ordinary movement step cost in RL reward
+        "boneReward": 10.0,                # RL reward for each of the first 4 Bones
+        "fifthBoneReward": 20.0,           # RL reward for the 5th Bone (double ordinary bone; total +60)
+        "allBonesBonus": 10.0,             # extra bonus added on the 5th Bone (boneReward + allBonesBonus = 20)
+        "endReward": 25.0,                 # reaching an End
+        "wallPenalty": -12.0,              # wall / boundary collision (strictly worse than max revisit -8)
+        "firstVisitPenalty": 0.0,          # 1st visit to a cell has 0 revisit penalty
+        "revisitPenalty": -2.0,            # 2nd visit penalty (-2)
+        "repeatedRevisitPenalty": -2.0,    # extra penalty per subsequent visit (3rd=-4, 4th=-6, 5th+=-8)
+        "maxRevisitPenalty": -8.0,         # cap on revisit penalty (-8) so backtracking remains possible
+        "noveltyReward": 1.5,              # intrinsic reward for visiting an unexplored cell for the first time
+        "deadEndPenalty": -2.5,            # penalty for re-entering a previously identified dead end
+        "loopPenalty": -1.5,               # penalty for repeating a movement oscillation or corridor loop
+        "progressReward": 0.4,             # shaping bonus for moving toward active objective on revisited cells
+        "regressPenalty": -0.3,            # shaping penalty for moving away from active objective without novelty
+        "scoreLimitPenalty": -15.0,        # negative terminal reward when trainingScore > maxScoreLimit
+        "stepLimitPenalty": -10.0,         # negative terminal reward when steps >= maxSteps
+        "failurePenalty": -10.0,           # terminal failure penalty when episode ends without reaching End
     },
     "exploration": {
-        "entropyStart": 0.025,           # entropy coefficient at update 0
-        "entropyEnd": 0.006,             # entropy coefficient after entropyDecayUpdates
-        "entropyDecayUpdates": 250,      # linear schedule length
-        "entropyTarget": 0.30,           # nats; if policy entropy falls below, boost coefficient
-        "entropyBoost": 2.0,             # multiplier applied while below target
-        "noveltyAnnealUpdates": 0,       # 0 = constant novelty; >0 linearly anneals novelty to noveltyFloor
-        "noveltyFloor": 0.5,             # fraction of noveltyReward kept after annealing
+        "entropyStart": 0.028,
+        "entropyEnd": 0.008,
+        "entropyDecayUpdates": 250,
+        "entropyTarget": 0.35,
+        "entropyBoost": 2.0,
+        "noveltyAnnealUpdates": 0,
+        "noveltyFloor": 0.5,
+        "routeDiversityBonus": 0.55,       # exploratory preference for unvisited alternative corridors at junctions
+        "deadEndAvoidanceBias": 2.5,       # logit suppression for known empty dead-end branches when alternatives exist
     },
     "ppo": {
         "learningRate": 8e-4,
         "gamma": 0.99,
         "gaeLambda": 0.95,
-        "shortGamma": 0.50,              # short-horizon GAE for low-variance local credit assignment
+        "shortGamma": 0.50,
         "shortLambda": 0.50,
-        "shortAdvantageWeight": 0.55,    # blend weight between short- and long-horizon GAE
+        "shortAdvantageWeight": 0.55,
         "clipRange": 0.2,
         "valueCoef": 0.5,
         "maxGradNorm": 0.5,
         "epochs": 4,
         "minibatchEpisodes": 8,
-        "targetKl": 0.04,                # early-stop epochs when approx KL exceeds 1.5 * targetKl
+        "targetKl": 0.04,
         "hiddenSize": 128,
+        "rewardScale": 0.1,                # internal GAE/critic scaling for [-12, +25] step rewards
     },
     "training": {
         "episodesPerUpdate": 16,
+        "attemptsPerMaze": 2,              # repeated attempts per sampled maze during training
         "maxSteps": 300,
+        "maxScoreLimit": 100,
         "evalInterval": 10,
         "evalEpisodesPerMap": 1,
         "cpuThreads": 4,
         "seed": None,
     },
     "sampling": {
-        "strategy": "shuffled_deck",     # every map is visited once per deck pass, in random order
-        "struggleFraction": 0.25,        # share of each batch reserved for low-win-rate maps
-        "uniqueMapsPerBatch": True,      # avoid duplicate maps inside one batch when possible
+        "strategy": "shuffled_deck",
+        "struggleFraction": 0.25,
+        "uniqueMapsPerBatch": True,
     },
     "rehearsal": {
-        "probability": 0.35,             # share of each batch drawn from previously learned maps
-        "maxProbability": 0.6,           # adaptive upper bound
-        "adaptive": True,                # raise rehearsal when old-map performance drops
-        "retentionTolerance": 0.10,      # allowed drop in retention win rate before raising rehearsal
-        "retentionSampleSize": 12,       # old maps evaluated each eval interval
-        "playedRatio": 0.4,              # share of rehearsal drawn from maps/played (continual learning)
+        "probability": 0.35,
+        "maxProbability": 0.6,
+        "adaptive": True,
+        "retentionTolerance": 0.10,
+        "retentionSampleSize": 12,
+        "playedRatio": 0.4,
     },
     "continual": {
         "updates": 3,
         "episodesPerUpdate": 8,
-        "newMapEpisodes": 4,             # fresh on-policy rollouts on newly played maps per update
+        "newMapEpisodes": 4,
         "learningRate": 3e-4,
     },
 }
@@ -92,7 +107,11 @@ def defaultConfig():
 
 
 def makeConfig(override=None):
-    return _deepMerge(defaultConfig(), override or {})
+    cfg = _deepMerge(defaultConfig(), override or {})
+    if override and "training" in override and "maxScoreLimit" in override["training"]:
+        if not ("reward" in override and "maxScoreLimit" in override["reward"]):
+            cfg["reward"]["maxScoreLimit"] = float(override["training"]["maxScoreLimit"])
+    return cfg
 
 
 def loadConfig(path=None):

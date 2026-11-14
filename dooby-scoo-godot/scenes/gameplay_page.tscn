@@ -83,6 +83,7 @@ text = "Maze: Starter Meadow Run"
 layout_mode = 2
 theme_override_font_sizes/font_size = 15
 text = "Python RL: Checking connection..."
+autowrap_mode = 3
 
 [node name="HSeparator1" type="HSeparator" parent="MainHBox/SidePanel/PanelMargin/VBox" unique_id=19001011]
 layout_mode = 2
@@ -227,7 +228,7 @@ custom_minimum_size = Vector2(0, 40)
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 18
-text = "Update RL Policy Now"
+text = "Update RL Policy"
 
 [node name="HSeparator3" type="HSeparator" parent="MainHBox/SidePanel/PanelMargin/VBox" unique_id=19001038]
 layout_mode = 2

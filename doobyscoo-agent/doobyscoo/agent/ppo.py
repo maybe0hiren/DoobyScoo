@@ -34,9 +34,9 @@ class UpdateMetrics(float):
         return self.toDict()[key]
 
 
-def computeAdvantages(episode, gamma=0.99, gaeLambda=0.95):
+def computeAdvantages(episode, gamma=0.99, gaeLambda=0.95, rewardScale=1.0):
     """Generalised Advantage Estimation over one complete episode."""
-    rewards = episode["rewards"]
+    rewards = [float(r) * float(rewardScale) for r in episode["rewards"]]
     values = episode["values"]
     bootstrapValue = float(episode.get("bootstrapValue", 0.0))
     advantages = np.zeros(len(rewards), dtype=np.float32)
@@ -75,21 +75,27 @@ def updatePolicy(
     shortAdvantageWeight=0.55,
     minibatchEpisodes=8,
     targetKl=0.04,
+    rewardScale=None,
 ):
-    """Recurrent PPO update over complete episodes.
+    """Recurrent PPO update over complete episodes (both successful and failed).
 
     Every episode is replayed from its own zero initial LSTM state, so sequence
-    boundaries are respected; padding is masked out of every loss term. Blends
-    short-horizon GAE (for low-variance credit on immediate wall collisions,
-    revisits, and bone pickups) with long-horizon GAE (for multi-step routes),
-    and updates `dirLinear` on the experienced directional step rewards.
+    boundaries are respected; padding is masked out of every loss term. Failed
+    trajectories (such as episodes terminated when trainingScore > 100) are
+    included in full so the policy learns to avoid high-score loops and dead ends.
     """
     validEpisodes = [ep for ep in episodes if len(ep.get("actions", [])) > 0]
     if not validEpisodes:
         return UpdateMetrics(0.0, entropyCoef=entropyCoef)
 
-    computed = [computeAdvantages(ep, gamma=gamma, gaeLambda=gaeLambda) for ep in validEpisodes]
-    shortComputed = [computeAdvantages(ep, gamma=shortGamma, gaeLambda=shortLambda) for ep in validEpisodes]
+    maxAbsReward = max(
+        (max((abs(float(r)) for r in ep["rewards"]), default=0.0) for ep in validEpisodes),
+        default=0.0,
+    )
+    activeScale = float(rewardScale) if rewardScale is not None else (0.1 if maxAbsReward > 3.5 else 1.0)
+
+    computed = [computeAdvantages(ep, gamma=gamma, gaeLambda=gaeLambda, rewardScale=activeScale) for ep in validEpisodes]
+    shortComputed = [computeAdvantages(ep, gamma=shortGamma, gaeLambda=shortLambda, rewardScale=activeScale) for ep in validEpisodes]
     allAdv = np.concatenate([adv for adv, _ in computed])
     advMean = float(allAdv.mean())
     advStd = float(allAdv.std() + 1e-8)
@@ -113,7 +119,8 @@ def updatePolicy(
             maxLen = max(lengths[i] for i in idx)
             obs = _pad([validEpisodes[i]["observations"] for i in idx], maxLen, np.float32, featureSize)
             actions = _pad([validEpisodes[i]["actions"] for i in idx], maxLen, np.int64)
-            rewards = _pad([validEpisodes[i]["rewards"] for i in idx], maxLen, np.float32)
+            scaledRewards = [[float(r) * activeScale for r in validEpisodes[i]["rewards"]] for i in idx]
+            rewards = _pad(scaledRewards, maxLen, np.float32)
             oldLogProbs = _pad([validEpisodes[i]["logProbs"] for i in idx], maxLen, np.float32)
             blendedAdv = [
                 (1.0 - shortW) * ((computed[i][0] - advMean) / advStd)
@@ -125,7 +132,7 @@ def updatePolicy(
             mask = _pad([np.ones(lengths[i]) for i in idx], maxLen, np.float32)
             maskSum = mask.sum().clamp(min=1.0)
 
-            seqOut = model.sequence(obs, returnDirFeats=True)
+            seqOut = model.sequence(obs, actions=actions, returnDirFeats=True)
             if len(seqOut) == 3:
                 logits, values, dirTensor = seqOut
             else:
@@ -149,7 +156,8 @@ def updatePolicy(
                 chosenDir = dirTensor.detach().gather(
                     2, actions.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, 1, dirTensor.shape[-1])
                 ).squeeze(2)
-                targetUtility = torch.clamp(rewards, min=-1.0, max=2.2)
+                shortAdvBatch = _pad([shortComputed[i][0] for i in idx], maxLen, np.float32)
+                targetUtility = torch.clamp(0.65 * rewards + 0.35 * shortAdvBatch, min=-1.6, max=2.8)
 
             optimizer.zero_grad()
             loss.backward()
