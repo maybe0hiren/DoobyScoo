@@ -35,15 +35,14 @@ func _request(method: int, endpoint: String, payload: Dictionary = {}) -> Dictio
 func _post(endpoint: String, payload: Dictionary) -> Dictionary:
 	return await _request(HTTPClient.METHOD_POST, endpoint, payload)
 
-func _get(name: StringName) -> Variant:
-	var endpoint = str(name)
+func _http_get(endpoint: String) -> Dictionary:
 	return await _request(HTTPClient.METHOD_GET, endpoint)
 
 func check_health() -> Dictionary:
-	return await _get("/health")
+	return await _http_get("/health")
 
 func fetch_agent_status() -> void:
-	var result := await _get("/agent/status")
+	var result := await _http_get("/agent/status")
 	if result.has("error"):
 		request_failed.emit(str(result["error"]))
 	else:

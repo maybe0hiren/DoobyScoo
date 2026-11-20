@@ -80,16 +80,24 @@ godot --path ./dooby-scoo-godot -- --profile-slot=p2 --rl-url=http://127.0.0.1:8
 
 ---
 
-## 4. Production Deployment (Docker + PostgreSQL)
+## 4. One-Command Production Server Deployment
+
+On any Linux server, clone the repository, enter `dooby-scoo-server`, and run `setup.sh`:
 
 ```bash
+git clone <repository>
 cd dooby-scoo-server
-cp .env.example .env
-# Edit .env to set a strong JWT_SECRET_KEY and POSTGRES_PASSWORD
-docker compose up --build -d
+sudo bash setup.sh
 ```
 
-For internet deployment on a VPS or homelab, place Nginx/Caddy in front of `dooby-scoo-server:8000` with TLS so Godot clients connect over `https://` and `wss://`.
+Manage the server lifecycle with:
+- `sudo bash start.sh` — Start all backend services
+- `sudo bash stop.sh` — Stop all backend services cleanly
+- `bash status.sh` — Display application, database, API, WebSocket, and log status
+- `bash logs.sh` — View or follow server logs (`bash logs.sh -f`)
+- `bash scripts/backup_db.sh` — Back up PostgreSQL / SQLite database
+
+When `SERVER_DOMAIN` is configured in `.env`, `start.sh` automatically launches the Caddy HTTPS reverse proxy profile (`Caddyfile`) so Godot clients connect over `https://` and `wss://`.
 
 ---
 

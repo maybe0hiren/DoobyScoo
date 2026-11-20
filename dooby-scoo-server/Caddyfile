@@ -1,0 +1,14 @@
+{
+	email {$ADMIN_EMAIL:admin@localhost}
+}
+
+{$SERVER_DOMAIN:localhost} {
+	encode gzip
+	reverse_proxy server:8000 {
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+	}
+}
+

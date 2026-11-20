@@ -12,8 +12,8 @@ class RateLimiter:
         self.lock = threading.Lock()
         self.buckets = {}
 
-    def check(self, key):
-        limit = int(settings.rateLimitPerMinute)
+    def check(self, key, customLimit=None):
+        limit = int(customLimit if customLimit is not None else settings.rateLimitPerMinute)
         if limit <= 0:
             return
         now = time.time()

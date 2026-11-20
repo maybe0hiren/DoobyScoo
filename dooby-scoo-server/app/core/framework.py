@@ -90,6 +90,31 @@ class ServerApplication:
         self.version = version
         self.routes = []
 
+    def generateOpenApiSpec(self):
+        paths = {}
+        for route in self.routes:
+            p = route["path"]
+            m = route["method"].lower()
+            paths.setdefault(p, {})[m] = {
+                "summary": f"{route['method']} {p}",
+                "operationId": f"{m}_{p.strip('/').replace('/', '_').replace('{', '').replace('}', '') or 'root'}",
+                "responses": {
+                    str(route["statusCode"]): {"description": "Successful JSON response"},
+                    "400": {"description": "Bad request"},
+                    "401": {"description": "Unauthorized"},
+                    "422": {"description": "Validation error"},
+                },
+            }
+        return {
+            "openapi": "3.1.0",
+            "info": {
+                "title": self.title,
+                "version": self.version,
+                "description": "Authoritative Online Multiplayer Backend for DoobyScoo (Accounts, Matchmaking, Battle Lifecycle, Replay Verification, Leaderboards, WebSockets).",
+            },
+            "paths": paths,
+        }
+
     def include_router(self, router, prefix=""):
         extraPrefix = str(prefix).rstrip("/")
         for method, routePath, handler, statusCode in router.routes:
@@ -143,6 +168,8 @@ class ServerApplication:
 
         try:
             rateLimiter.check(clientIp)
+            if path.startswith("/api/v1/auth/"):
+                rateLimiter.check(f"auth:{clientIp}", customLimit=settings.authRateLimitPerMinute)
             if rawBody and len(rawBody) > settings.maxRequestBytes:
                 raise BadRequestError("Request payload exceeds maximum allowed size", code="payload_too_large")
 
@@ -184,8 +211,8 @@ class ServerApplication:
             return err.statusCode, err.toDict()
         except ValueError as err:
             return 400, {"success": False, "error": str(err), "detail": str(err), "code": "bad_request"}
-        except Exception as err:
-            return 500, {"success": False, "error": f"Internal server error: {err}", "code": "internal_error"}
+        except Exception:
+            return 500, {"success": False, "error": "Internal server error", "code": "internal_error"}
 
 
 class _TornadoHttpHandler(tornado.web.RequestHandler):
@@ -240,23 +267,50 @@ class _TornadoWsHandler(tornado.websocket.WebSocketHandler):
         self.serverApp = serverApp
         self.user = None
         self.ioLoop = None
+        self.battleId = None
 
     def check_origin(self, origin):
         return True
 
-    def open(self):
+    def _validateBattleAccess(self):
+        if not self.battleId or not self.user:
+            return True
+        db = getDb()
+        row = db.fetchOne("SELECT player_1_id, player_2_id FROM matches WHERE id = ?", (str(self.battleId),))
+        if not row or str(self.user.id) not in (str(row["player_1_id"]), str(row["player_2_id"])):
+            self.write_message(json.dumps({
+                "event_type": "connection.error",
+                "error": "Forbidden: You are not a participant in this battle room",
+                "code": "forbidden",
+            }))
+            self.close(code=4003, reason="Forbidden")
+            return False
+        return True
+
+    def open(self, battleId=None):
+        self.battleId = battleId
         self.ioLoop = tornado.ioloop.IOLoop.current()
         queryParams = {k: [v.decode("utf-8") for v in vals] for k, vals in self.request.query_arguments.items()}
         headers = {k: v for k, v in self.request.headers.get_all()}
         try:
             token = extractBearerToken(headers, queryParams)
             self.user = getCurrentUserFromToken(token)
+            if not self._validateBattleAccess():
+                self.user = None
+                return
             wsManager.registerConnection(self.user.id, self)
             lastEventId = self.get_query_argument("last_event_id", default=None)
             sinceSeq = int(self.get_query_argument("since_seq", default="0") or 0)
             self._sendAuthAck(lastEventId=lastEventId, sinceSeq=sinceSeq)
         except UnauthorizedError:
             self.user = None
+            if self.battleId:
+                self.write_message(json.dumps({
+                    "event_type": "connection.error",
+                    "error": "Authentication required for battle room WebSocket",
+                    "code": "unauthorized",
+                }))
+                self.close(code=4001, reason="Unauthorized")
 
     def _sendAuthAck(self, lastEventId=None, sinceSeq=0):
         if not self.user:
@@ -307,6 +361,9 @@ class _TornadoWsHandler(tornado.websocket.WebSocketHandler):
             token = data.get("token") or data.get("access_token")
             try:
                 self.user = getCurrentUserFromToken(token)
+                if not self._validateBattleAccess():
+                    self.user = None
+                    return
                 wsManager.registerConnection(self.user.id, self)
                 self._sendAuthAck(
                     lastEventId=data.get("last_event_id"),
@@ -405,6 +462,8 @@ def startBackgroundServer(serverApp, host="127.0.0.1", port=0):
         tornadoApp = tornado.web.Application([
             (r"/ws", _TornadoWsHandler, {"serverApp": serverApp}),
             (r"/api/v1/ws", _TornadoWsHandler, {"serverApp": serverApp}),
+            (r"/api/v1/battles/([^/]+)/ws", _TornadoWsHandler, {"serverApp": serverApp}),
+            (r"/api/v1/matches/([^/]+)/ws", _TornadoWsHandler, {"serverApp": serverApp}),
             (r"/.*", _TornadoHttpHandler, {"serverApp": serverApp}),
         ])
         httpServer = tornado.httpserver.HTTPServer(tornadoApp)

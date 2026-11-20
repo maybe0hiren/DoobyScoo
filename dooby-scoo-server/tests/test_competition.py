@@ -123,11 +123,17 @@ class CompetitionAndVerificationTests(unittest.TestCase):
             "final_position": replay2["final_position"],
             "submission_id": "sub_valid_p2",
         }
-        statusSub2, subResp2 = self.client.post(f"/api/v1/matches/{matchId}/submit", subPayload2, token=tok2)
+        statusSub2, subResp2 = self.client.post(f"/api/v1/battles/{matchId}/actions", subPayload2, token=tok2)
         self.assertEqual(statusSub2, 200)
         self.assertEqual(subResp2["status"], "COMPLETED")
         self.assertEqual(subResp2["winner_id"], uid1)
+        self.assertEqual(subResp2["battle_id"], matchId)
         self.assertFalse(subResp2["is_draw"])
+
+        statusBattleGet, battleGetResp = self.client.get(f"/api/v1/battles/{matchId}", token=tok1)
+        self.assertEqual(statusBattleGet, 200)
+        self.assertEqual(battleGetResp["battle_id"], matchId)
+        self.assertEqual(battleGetResp["winner_id"], uid1)
 
     def testWallCollisionPitTeleportBoneCollectionTimeoutAndDraw(self):
         customGrid = []

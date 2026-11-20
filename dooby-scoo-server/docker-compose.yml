@@ -1,6 +1,7 @@
 services:
   db:
     image: postgres:16-alpine
+    container_name: doobyscoo-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-doobyscoo}
@@ -8,6 +9,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-doobyscoo}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./backups:/backups
     networks:
       - backend_net
     healthcheck:
@@ -18,19 +20,53 @@ services:
 
   server:
     build: .
+    container_name: doobyscoo-backend
     restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
     environment:
+      APP_NAME: ${APP_NAME:-DoobyScoo Multiplayer Server}
       APP_ENV: ${APP_ENV:-production}
       HOST: 0.0.0.0
       PORT: 8000
       DATABASE_URL: postgresql://${POSTGRES_USER:-doobyscoo}:${POSTGRES_PASSWORD:-doobyscoo_dev_password}@db:5432/${POSTGRES_DB:-doobyscoo}
+      FALLBACK_SQLITE_PATH: /app/data/doobyscoo_server.db
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-me-in-production}
       CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-240}
+      AUTH_RATE_LIMIT_PER_MINUTE: ${AUTH_RATE_LIMIT_PER_MINUTE:-60}
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
     ports:
       - "${PORT:-8000}:8000"
+    networks:
+      - backend_net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: doobyscoo-caddy
+    restart: unless-stopped
+    profiles:
+      - https
+    depends_on:
+      - server
+    environment:
+      SERVER_DOMAIN: ${SERVER_DOMAIN:-localhost}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@localhost}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
     networks:
       - backend_net
 
@@ -40,4 +76,5 @@ networks:
 
 volumes:
   postgres_data:
-
+  caddy_data:
+  caddy_config:

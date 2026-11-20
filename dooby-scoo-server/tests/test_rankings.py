@@ -115,6 +115,10 @@ class RankingsAndProgressionTests(unittest.TestCase):
         usernamesOrder = [e["username"] for e in globalLb["entries"]]
         self.assertEqual(usernamesOrder, ["rank_c", "rank_b", "rank_a", "rank_d"])
 
+        status, singularLb = self.client.get("/api/v1/leaderboard?limit=10&offset=0")
+        self.assertEqual(status, 200)
+        self.assertEqual([e["username"] for e in singularLb["entries"]], ["rank_c", "rank_b", "rank_a", "rank_d"])
+
         status, pageLb = self.client.get("/api/v1/leaderboards/global?limit=2&offset=1")
         self.assertEqual(status, 200)
         self.assertEqual(len(pageLb["entries"]), 2)

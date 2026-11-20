@@ -41,6 +41,13 @@ def submitMatchEndpoint(request, db):
     return submitMatchResult(db, matchId, user.id, request.body)
 
 
+@router.post("/{match_id}/actions")
+def submitMatchActionsEndpoint(request, db):
+    user = getCurrentUser(request, db=db)
+    matchId = request.pathParams["match_id"]
+    return submitMatchResult(db, matchId, user.id, request.body)
+
+
 @router.get("/{match_id}/result")
 def getMatchResultEndpoint(request, db):
     user = getCurrentUser(request, db=db)

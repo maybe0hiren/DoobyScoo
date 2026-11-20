@@ -1,12 +1,13 @@
 import argparse
 import time
 from . import __version__
-from .api import auth, history, leaderboards, matches, matchmaking, profiles, users
+from .api import auth, battles, history, leaderboards, matches, matchmaking, profiles, users
 from .config import settings
 from .core.framework import ServerApplication, startBackgroundServer
 from .core.security import nowIso
 from .core.websocket_manager import wsManager
 from .database.session import dbEngine, initDatabase
+from .services.ranking_service import getGlobalLeaderboard, getLeagueLeaderboard
 
 
 def createApp(databaseUrl=None, fallbackSqlitePath=None, resetDb=False):
@@ -21,6 +22,34 @@ def createApp(databaseUrl=None, fallbackSqlitePath=None, resetDb=False):
             "version": __version__,
             "timestamp": nowIso(),
         }
+
+    @serverApp.get("/api/v1/health")
+    def apiHealthCheck(request, db):
+        return {
+            "status": "ok",
+            "service": "dooby-scoo-server",
+            "version": __version__,
+            "timestamp": nowIso(),
+        }
+
+    @serverApp.get("/openapi.json")
+    def openApiRoot(request, db):
+        return serverApp.generateOpenApiSpec()
+
+    @serverApp.get("/api/v1/openapi.json")
+    def openApiV1(request, db):
+        return serverApp.generateOpenApiSpec()
+
+    @serverApp.get("/api/v1/leaderboard")
+    def singularLeaderboardEndpoint(request, db):
+        limit = int(request.getQuery("limit", 50) or 50)
+        offset = int(request.getQuery("offset", 0) or 0)
+        league = request.getQuery("league", None)
+        if league:
+            res = getLeagueLeaderboard(db, league, limit=limit, offset=offset)
+        else:
+            res = getGlobalLeaderboard(db, limit=limit, offset=offset)
+        return {"success": True, **res}
 
     @serverApp.get("/api/v1/status")
     def apiStatus(request, db):
@@ -48,6 +77,7 @@ def createApp(databaseUrl=None, fallbackSqlitePath=None, resetDb=False):
     serverApp.include_router(profiles.router)
     serverApp.include_router(matchmaking.router)
     serverApp.include_router(matches.router)
+    serverApp.include_router(battles.router)
     serverApp.include_router(leaderboards.router)
     serverApp.include_router(history.router)
     return serverApp

@@ -92,6 +92,30 @@ class AuthTests(unittest.TestCase):
         self.assertEqual(patchResp["player"]["display_name"], "Grandmaster Alpha")
         self.assertEqual(patchResp["player"]["avatar"], "dog_golden")
 
+        status, userMeResp = self.client.get("/api/v1/users/me", token=token)
+        self.assertEqual(status, 200)
+        self.assertEqual(userMeResp["user"]["username"], "alpha_dog")
+        self.assertEqual(userMeResp["player"]["display_name"], "Grandmaster Alpha")
+
+        status, userPatchResp = self.client.patch(
+            "/api/v1/users/me",
+            {"display_name": "Champion Alpha"},
+            token=token,
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(userPatchResp["player"]["display_name"], "Champion Alpha")
+
+        uid = userMeResp["user"]["id"]
+        status, statsResp = self.client.get(f"/api/v1/users/{uid}/stats")
+        self.assertEqual(status, 200)
+        self.assertEqual(statsResp["stats"]["username"], "alpha_dog")
+
+        status, openApiResp = self.client.get("/openapi.json")
+        self.assertEqual(status, 200)
+        self.assertEqual(openApiResp["openapi"], "3.1.0")
+        self.assertIn("/api/v1/auth/register", openApiResp["paths"])
+        self.assertIn("/api/v1/battles/{battle_id}/actions", openApiResp["paths"])
+
         status, refResp = self.client.post("/api/v1/auth/refresh", {"refresh_token": refreshToken})
         self.assertEqual(status, 200)
         self.assertIn("access_token", refResp)

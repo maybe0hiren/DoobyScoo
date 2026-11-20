@@ -12,11 +12,30 @@ DEFAULT_LEAGUE_THRESHOLDS = (
 )
 
 
+def _loadDotEnvFile():
+    envPath = Path(__file__).resolve().parent.parent / ".env"
+    if not envPath.exists():
+        return
+    try:
+        for rawLine in envPath.read_text(encoding="utf-8").splitlines():
+            line = rawLine.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, val = line.split("=", 1)
+            key = key.strip()
+            val = val.strip().strip('"').strip("'")
+            if key and key not in os.environ:
+                os.environ[key] = val
+    except Exception:
+        pass
+
+
 class Settings:
     def __init__(self):
         self.reload()
 
     def reload(self):
+        _loadDotEnvFile()
         self.appName = os.getenv("APP_NAME", "DoobyScoo Multiplayer Server")
         self.appEnv = os.getenv("APP_ENV", "development")
         self.host = os.getenv("HOST", "0.0.0.0")
@@ -48,6 +67,7 @@ class Settings:
         self.xpPersonalBest = int(os.getenv("XP_PERSONAL_BEST", "30"))
         self.xpLeagueAdvancement = int(os.getenv("XP_LEAGUE_ADVANCEMENT", "100"))
         self.rateLimitPerMinute = int(os.getenv("RATE_LIMIT_PER_MINUTE", "240"))
+        self.authRateLimitPerMinute = int(os.getenv("AUTH_RATE_LIMIT_PER_MINUTE", "60"))
         self.maxRequestBytes = int(os.getenv("MAX_REQUEST_BYTES", str(1024 * 1024)))
         self.leagueThresholds = list(DEFAULT_LEAGUE_THRESHOLDS)
 

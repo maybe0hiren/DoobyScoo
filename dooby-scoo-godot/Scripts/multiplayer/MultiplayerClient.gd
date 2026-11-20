@@ -360,12 +360,33 @@ func reset_password(username: String, email: String, new_password: String) -> Di
 	)
 
 
+func check_server_health() -> Dictionary:
+	return await _request_api(HTTPClient.METHOD_GET, "/health", {}, false, false)
+
+
+func fetch_server_status() -> Dictionary:
+	return await _request_api(HTTPClient.METHOD_GET, "/api/v1/status", {}, false, false)
+
+
 func fetch_my_profile() -> Dictionary:
 	var res: Dictionary = await _request_api(HTTPClient.METHOD_GET, "/api/v1/players/me")
 	if bool(res.get("success", false)) and res.get("player") is Dictionary:
 		current_player = res["player"]
 		save_session()
 	return res
+
+
+func fetch_user_me() -> Dictionary:
+	return await _request_api(HTTPClient.METHOD_GET, "/api/v1/users/me")
+
+
+func fetch_user_stats(user_id: String) -> Dictionary:
+	return await _request_api(
+		HTTPClient.METHOD_GET,
+		"/api/v1/users/%s/stats" % user_id.uri_encode(),
+		{},
+		false
+	)
 
 
 func update_my_profile(updates: Dictionary) -> Dictionary:
@@ -403,6 +424,10 @@ func fetch_match(match_id: String) -> Dictionary:
 	return await _request_api(HTTPClient.METHOD_GET, "/api/v1/matches/" + match_id)
 
 
+func fetch_battle(battle_id: String) -> Dictionary:
+	return await _request_api(HTTPClient.METHOD_GET, "/api/v1/battles/" + battle_id)
+
+
 func fetch_match_map(match_id: String) -> Dictionary:
 	return await _request_api(HTTPClient.METHOD_GET, "/api/v1/matches/%s/map" % match_id)
 
@@ -411,6 +436,14 @@ func submit_match_result(match_id: String, submission_payload: Dictionary) -> Di
 	return await _request_api(
 		HTTPClient.METHOD_POST,
 		"/api/v1/matches/%s/submit" % match_id,
+		submission_payload
+	)
+
+
+func submit_battle_actions(battle_id: String, submission_payload: Dictionary) -> Dictionary:
+	return await _request_api(
+		HTTPClient.METHOD_POST,
+		"/api/v1/battles/%s/actions" % battle_id,
 		submission_payload
 	)
 
