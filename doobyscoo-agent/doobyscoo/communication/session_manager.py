@@ -166,70 +166,10 @@ class GameService:
         return "custom_maze"
 
     def _computeSessionLogitBias(self, session):
-        if session is None or session.deterministic or str(session.mode).lower() == "competitive":
+        if session is None:
             return None
-        env = session.environment
-        openActions = env.availableActionIndices()
-        if len(openActions) < 2:
-            return None
-        pos = (int(env.position[0]), int(env.position[1]))
-        pm = env.priorMazeMemory
-        priorDeadEdges = pm.get("cumulativeDeadEndEdges", set()) | env.deadEndEdges
-        priorLoopEdges = pm.get("historicalLoopEdges", set()) | env.loopEdges
-        priorEdges = pm.get("cumulativeTraversedEdges", set())
-
-        bias = np.zeros(4, dtype=np.float32)
-        anyBias = False
-        deadActions = []
-        viableActions = []
-        for act in openActions:
-            target = env.neighbor(act)
-            if target is None:
-                continue
-            edgeTuple = (pos[0], pos[1], int(act))
-            isDead = (
-                (target in env.knownDeadEnds or edgeTuple in priorDeadEdges)
-                and (target not in env.remainingBones)
-                and (target not in env.ends)
-            )
-            if isDead:
-                deadActions.append(act)
-            else:
-                viableActions.append(act)
-
-        if deadActions and viableActions:
-            for act in deadActions:
-                bias[act] -= 2.5
-                anyBias = True
-
-        for act in viableActions:
-            target = env.neighbor(act)
-            edgeTuple = (pos[0], pos[1], int(act))
-            if edgeTuple in priorLoopEdges and target is not None and env.visitCountAt(target) > 0:
-                bias[act] -= 1.2
-                anyBias = True
-
-        if priorEdges:
-            unvisitedPrior = [
-                act
-                for act in viableActions
-                if env.neighbor(act) is not None
-                and env.visitCountAt(env.neighbor(act)) == 0
-                and (pos[0], pos[1], int(act)) not in priorEdges
-            ]
-            visitedPrior = [
-                act
-                for act in viableActions
-                if env.neighbor(act) is not None
-                and env.visitCountAt(env.neighbor(act)) == 0
-                and (pos[0], pos[1], int(act)) in priorEdges
-            ]
-            if unvisitedPrior and visitedPrior:
-                for act in unvisitedPrior:
-                    bias[act] += 0.55
-                    anyBias = True
-
-        return bias if anyBias else None
+        isComp = str(session.mode).lower() == "competitive"
+        return session.environment.computeNavigationActionBias(includeCrossAttemptMemory=not isComp)
 
     def startEpisode(self, payload):
         _rejectSensitiveCredentials(payload)
@@ -380,7 +320,7 @@ class GameService:
             activeModel = session.policyModel if session is not None else self.model
             stateIn = session.memory if session is not None else activeModel.initialState()
             actMask = session.environment.actionMask() if session is not None else None
-            logitBias = self._computeSessionLogitBias(session) if (session is not None and not deterministic) else None
+            logitBias = self._computeSessionLogitBias(session) if session is not None else None
             actionIdx, logProb, value, nextState = chooseAction(
                 activeModel,
                 obsVec,
@@ -428,7 +368,7 @@ class GameService:
             obsBefore = session.environment.observe()
             maskBefore = session.environment.actionMask()
             activeModel = session.policyModel
-            logitBias = self._computeSessionLogitBias(session) if not deterministic else None
+            logitBias = self._computeSessionLogitBias(session)
 
             if "action" in payload and payload["action"] is not None:
                 requestedAction = parseActionValue(payload["action"])
@@ -493,7 +433,6 @@ class GameService:
             }
 
             if done and bool(payload.get("auto_end", True)):
-                # Never auto-update policy weights when an episode ends; user controls PPO updates.
                 endSummary = self._finalizeSession(session, scheduleLearn=False)
                 result.update(endSummary)
 
@@ -507,8 +446,6 @@ class GameService:
         _rejectSensitiveCredentials(payload)
         with self.lock:
             session = self._getSession(payload.get("session_id"))
-            # User controls policy updates via /learn (Update RL Policy button).
-            # Completing an episode only records rollout experience by default.
             summary = self._finalizeSession(session, scheduleLearn=False)
             return {
                 "success": True,
@@ -546,6 +483,7 @@ class GameService:
         traj["newAreasExplored"] = int(env.newAreasExploredCount())
         traj["deadEndsEncountered"] = int(env.deadEndsEncountered)
         traj["deadEndReentries"] = int(env.deadEndReentries)
+        traj["oscillationsDetected"] = int(env.oscillationsDetected)
         traj["repeatedMistakes"] = int(env.totalMistakesCount())
         traj["avoidedPreviousMistakes"] = int(env.avoidedPreviousMistakes)
         traj["knownDeadEnds"] = [[int(p[0]), int(p[1])] for p in sorted(env.knownDeadEnds)]
@@ -619,6 +557,7 @@ class GameService:
             "bestOfficialScore": mazeSummary.get("bestOfficialScore"),
             "newAreasExplored": int(attemptOutcome.get("newAreasExplored", traj["newAreasExplored"])) if attemptOutcome else int(traj["newAreasExplored"]),
             "deadEndsEncountered": int(traj["deadEndsEncountered"]),
+            "oscillationsDetected": int(traj["oscillationsDetected"]),
             "repeatedMistakes": int(traj["repeatedMistakes"]),
             "avoidedPreviousMistakes": int(traj["avoidedPreviousMistakes"]),
             "action_trace": actionTrace,
@@ -650,6 +589,7 @@ class GameService:
                 "uniqueCells": traj["uniqueCells"],
                 "newAreasExplored": int(attemptOutcome.get("newAreasExplored", traj["newAreasExplored"])) if attemptOutcome else int(traj["newAreasExplored"]),
                 "deadEndsEncountered": traj["deadEndsEncountered"],
+                "oscillationsDetected": traj["oscillationsDetected"],
                 "repeatedMistakes": traj["repeatedMistakes"],
                 "avoidedPreviousMistakes": traj["avoidedPreviousMistakes"],
                 "maxVisitCount": traj["maxVisitCount"],
@@ -835,6 +775,7 @@ class GameService:
         with self.lock:
             meta = getCheckpointMetadata(self.checkpoint)
             recentEvents = self.progressReporter.recentMessages(5)
+            optSummary = self.optimizationTracker.globalSummary()
             return {
                 "status": "ok",
                 "modelId": meta.get("modelId") or self.meta.get("modelId"),
@@ -845,13 +786,20 @@ class GameService:
                 "totalEpisodes": int(meta.get("totalEpisodes", 0)),
                 "totalSteps": int(meta.get("totalSteps", 0)),
                 "bestWinRate": float(meta.get("bestRate", 0.0)),
-                "bestScore": meta.get("bestScore", None),
+                "bestScore": meta.get("bestScore", optSummary.get("bestScore")),
                 "learning": self.learning,
                 "activeSessions": len(self.sessions),
                 "playedMapsCount": len(self.experienceStore.listPlayedMaps()),
                 "pendingEpisodes": self.experienceStore.pendingCount(),
                 "pendingSamples": self.experienceStore.pendingSamplesCount(),
-                "optimization": self.optimizationTracker.globalSummary(),
+                "attempts": optSummary.get("attempts", 0),
+                "averageSteps": optSummary.get("averageSteps", 0.0),
+                "bonesCollected": optSummary.get("bonesCollected", 0),
+                "mazeCompletionRate": optSummary.get("mazeCompletionRate", 0.0),
+                "repeatedMoves": optSummary.get("repeatedMoves", 0),
+                "revisitRate": optSummary.get("revisitRate", 0.0),
+                "loopsDetected": optSummary.get("loopsDetected", 0),
+                "optimization": optSummary,
                 "progressMessages": [e["formatted"] for e in recentEvents],
                 "latestProgress": recentEvents[-1]["formatted"] if recentEvents else None,
             }
@@ -871,3 +819,4 @@ class GameService:
                 "agent": self.agentStatus(),
                 "training": self.lastTrainingMetrics,
             }
+

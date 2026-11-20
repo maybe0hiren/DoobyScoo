@@ -44,3 +44,4 @@ def validateObservationInput(observation, sessionObservation=None):
     raise ValueError(
         f"Expected {OBSERVATION_SIZE}-feature observation (or {V3_OBSERVATION_SIZE}/{PREVIOUS_OBSERVATION_SIZE}/{LEGACY_OBSERVATION_SIZE} legacy), got {arr.shape[0]}"
     )
+

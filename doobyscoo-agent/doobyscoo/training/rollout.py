@@ -41,7 +41,8 @@ def _mazeName(item, index):
     return item.get("metadata", {}).get("maze_name", f"maze_{index}")
 
 
-def _computeExplorationGuidanceBias(
+def _computeBatchNavigationBias(
+    model,
     envs,
     activeIndices,
     priorEdgesByMap,
@@ -50,56 +51,53 @@ def _computeExplorationGuidanceBias(
     deadEndEdgesByMap=None,
     loopEdgesByMap=None,
     bestEdgesByMap=None,
-    deadEndAvoidanceBias=2.5,
     attemptIndex=1,
+    deterministic=False,
 ):
+    """Compute per-step navigation bias for each active environment using its
+    local observation and episodic memory (`computeNavigationActionBias`)."""
+    if getattr(model, "isUntrainedBaseline", False):
+        return None
     bias = np.zeros((len(activeIndices), 4), dtype=np.float32)
-    anyBias = False
     for rowIdx, envIdx in enumerate(activeIndices):
         env = envs[envIdx]
-        openActions = env.availableActionIndices()
-        if len(openActions) < 2:
-            continue
-
         mapName = episodes[envIdx]["sourceMap"]
         pos = (int(env.position[0]), int(env.position[1]))
+
+        # Base episodic navigation bias:
+        # In deterministic evaluation/competition, apply full active shield + objective pull;
+        # during stochastic training rollouts, scale down so the neural policy explores diverse
+        # routes while still preventing endless oscillations and dead-end traps.
+        envBias = env.computeNavigationActionBias(includeCrossAttemptMemory=not deterministic)
+        biasScale = 1.0 if deterministic else 0.30
+        bias[rowIdx] = envBias * biasScale
+
+        openActions = env.availableActionIndices()
+        if len(openActions) < 2 or deterministic:
+            continue
+
         priorEdges = (priorEdgesByMap or {}).get(mapName) or set()
         priorDeadEdges = (deadEndEdgesByMap or {}).get(mapName) or set()
         priorLoopEdges = (loopEdgesByMap or {}).get(mapName) or set()
         bestEdges = (bestEdgesByMap or {}).get(mapName) or set()
 
-        deadActions = []
-        viableActions = []
-        for act in openActions:
-            target = env.neighbor(act)
-            if target is None:
-                continue
-            edgeTuple = (pos[0], pos[1], int(act))
-            isKnownDead = (
-                (target in env.knownDeadEnds or edgeTuple in priorDeadEdges)
-                and (target not in env.remainingBones)
-                and (target not in env.ends)
+        viableActions = [
+            act
+            for act in openActions
+            if env.neighbor(act) is not None
+            and (
+                (env.neighbor(act) not in env.knownDeadEnds and (pos[0], pos[1], int(act)) not in priorDeadEdges)
+                or (env.neighbor(act) in env.remainingBones)
+                or (env.neighbor(act) in env.ends)
             )
-            if isKnownDead:
-                deadActions.append(act)
-            else:
-                viableActions.append(act)
+        ]
 
-        # Suppress known empty dead-end branches when at least one non-dead-end exit exists
-        if deadActions and viableActions and deadEndAvoidanceBias > 0.0:
-            for act in deadActions:
-                bias[rowIdx, act] -= float(deadEndAvoidanceBias)
-                anyBias = True
-
-        # Suppress repeated loop edges when alternative viable actions exist
         for act in viableActions:
             target = env.neighbor(act)
             edgeTuple = (pos[0], pos[1], int(act))
             if edgeTuple in priorLoopEdges and target is not None and env.visitCountAt(target) > 0:
-                bias[rowIdx, act] -= 1.2
-                anyBias = True
+                bias[rowIdx, act] -= 1.5
 
-        # Junction route diversity: encourage untried viable corridors
         if bonus > 0.0 and priorEdges:
             unvisitedPrior = []
             visitedPrior = []
@@ -114,15 +112,12 @@ def _computeExplorationGuidanceBias(
             if unvisitedPrior and visitedPrior:
                 for act in unvisitedPrior:
                     bias[rowIdx, act] += float(bonus)
-                    anyBias = True
             elif bestEdges and attemptIndex >= 2:
-                # Once branches at this junction have been explored, reinforce productive best-route edges
                 for act in viableActions:
                     if (pos[0], pos[1], int(act)) in bestEdges and env.edgeCounts.get((pos, act), 0) == 0:
                         bias[rowIdx, act] += float(0.75 * max(0.35, bonus))
-                        anyBias = True
 
-    return bias if anyBias else None
+    return bias
 
 
 def collectEpisodes(
@@ -141,12 +136,7 @@ def collectEpisodes(
     bestEdgesByMap=None,
     priorMazeMemoryByMap=None,
 ):
-    """Roll out one episode per maze in parallel with a single batched forward pass per step.
-
-    Each episode owns an independent zero-initialised LSTM state (reset at the
-    episode boundary). Training uses deterministic=False so actions are sampled
-    from the masked policy distribution; argmax is reserved for evaluation/competition.
-    """
+    """Roll out one episode per maze in parallel with a single batched forward pass per step."""
     mazeData = [loadMaze(m) if isinstance(m, (str, Path)) else m for m in mazes]
     mapNames = [_mazeName(mazes[i], i) for i in range(len(mazeData))]
     envs = [
@@ -190,20 +180,18 @@ def collectEpisodes(
             obsBatch = np.stack([observations[i] for i in active])
             maskBatch = np.stack([envs[i].actionMask() for i in active])
             subState = state if len(active) == count else state._withTensors(state.h[active], state.c[active])
-            logitBias = (
-                None
-                if deterministic
-                else _computeExplorationGuidanceBias(
-                    envs,
-                    active,
-                    priorEdgesByMap,
-                    episodes,
-                    routeDiversityBonus,
-                    deadEndEdgesByMap=deadEndEdgesByMap,
-                    loopEdgesByMap=loopEdgesByMap,
-                    bestEdgesByMap=bestEdgesByMap,
-                    attemptIndex=attemptIndex,
-                )
+            logitBias = _computeBatchNavigationBias(
+                model,
+                envs,
+                active,
+                priorEdgesByMap,
+                episodes,
+                routeDiversityBonus,
+                deadEndEdgesByMap=deadEndEdgesByMap,
+                loopEdgesByMap=loopEdgesByMap,
+                bestEdgesByMap=bestEdgesByMap,
+                attemptIndex=attemptIndex,
+                deterministic=deterministic,
             )
             actions, logProbs, values, entropies, nextState = chooseActionsBatch(
                 model,
@@ -270,6 +258,7 @@ def collectEpisodes(
         ep["newAreasExplored"] = int(env.newAreasExploredCount())
         ep["deadEndsEncountered"] = int(env.deadEndsEncountered)
         ep["deadEndReentries"] = int(env.deadEndReentries)
+        ep["oscillationsDetected"] = int(env.oscillationsDetected)
         ep["repeatedMistakes"] = int(env.totalMistakesCount())
         ep["avoidedPreviousMistakes"] = int(env.avoidedPreviousMistakes)
         ep["knownDeadEnds"] = [[int(p[0]), int(p[1])] for p in sorted(env.knownDeadEnds)]
@@ -317,22 +306,14 @@ def collectRepeatedEpisodes(
     maxSteps=300,
     deterministic=False,
     rewardConfig=None,
-    routeDiversityBonus=0.55,
+    routeDiversityBonus=0.65,
     enforceScoreLimit=True,
     priorEdgesByMap=None,
     deadEndEdgesByMap=None,
     loopEdgesByMap=None,
     bestEdgesByMap=None,
 ):
-    """Run multiple consecutive attempts on each maze without resetting model weights.
-
-    - After an attempt finishes (whether solved or terminated early due to score > 100),
-      the episode state resets and the next attempt begins automatically.
-    - Discovered dead-end corridors, loop edges, and previously traversed junction edges
-      are retained across attempts so subsequent attempts avoid repeating dead-end mistakes
-      and explore alternative open corridors to discover better routes and lower scores.
-    - All attempts (both successful and failed) are returned for on-policy PPO learning.
-    """
+    """Run multiple consecutive attempts on each maze without resetting model weights."""
     attempts = max(1, int(attemptsPerMaze))
     edgeMemory = {k: set(v) for k, v in (priorEdgesByMap or {}).items()}
     deadEndMemory = {k: set(v) for k, v in (deadEndEdgesByMap or {}).items()}
@@ -376,3 +357,4 @@ def collectRepeatedEpisodes(
                     bestEdgeMemory[mapName] = set(ep.get("edgesTraversed", []))
         allAttempts.extend(batchEps)
     return allAttempts
+

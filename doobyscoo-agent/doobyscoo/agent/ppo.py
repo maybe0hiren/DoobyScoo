@@ -5,8 +5,17 @@ from torch.distributions import Categorical
 
 
 class UpdateMetrics(float):
-    def __new__(cls, totalLoss, policyLoss=0.0, valueLoss=0.0, entropy=0.0, approxKl=0.0, clipFraction=0.0,
-                epochsRun=0, entropyCoef=0.0):
+    def __new__(
+        cls,
+        totalLoss,
+        policyLoss=0.0,
+        valueLoss=0.0,
+        entropy=0.0,
+        approxKl=0.0,
+        clipFraction=0.0,
+        epochsRun=0,
+        entropyCoef=0.0,
+    ):
         instance = super().__new__(cls, float(totalLoss))
         instance.totalLoss = float(totalLoss)
         instance.policyLoss = float(policyLoss)
@@ -70,8 +79,8 @@ def updatePolicy(
     maxGradNorm=0.5,
     gamma=0.99,
     gaeLambda=0.95,
-    shortGamma=0.50,
-    shortLambda=0.50,
+    shortGamma=0.55,
+    shortLambda=0.55,
     shortAdvantageWeight=0.55,
     minibatchEpisodes=8,
     targetKl=0.04,
@@ -79,10 +88,10 @@ def updatePolicy(
 ):
     """Recurrent PPO update over complete episodes (both successful and failed).
 
-    Every episode is replayed from its own zero initial LSTM state, so sequence
-    boundaries are respected; padding is masked out of every loss term. Failed
-    trajectories (such as episodes terminated when trainingScore > 100) are
-    included in full so the policy learns to avoid high-score loops and dead ends.
+    Blends long-horizon GAE (gamma=0.99, for End completion and overall official score)
+    with short-horizon GAE (gamma=0.55, for immediate step penalties, revisit avoidance,
+    oscillation suppression, and nearby Bone collection), and updates both the deep
+    actor-critic weights and the directional utility scorer (`dirLinear`).
     """
     validEpisodes = [ep for ep in episodes if len(ep.get("actions", [])) > 0]
     if not validEpisodes:
@@ -157,7 +166,7 @@ def updatePolicy(
                     2, actions.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, 1, dirTensor.shape[-1])
                 ).squeeze(2)
                 shortAdvBatch = _pad([shortComputed[i][0] for i in idx], maxLen, np.float32)
-                targetUtility = torch.clamp(0.65 * rewards + 0.35 * shortAdvBatch, min=-1.6, max=2.8)
+                targetUtility = torch.clamp(0.65 * rewards + 0.35 * shortAdvBatch, min=-2.0, max=3.2)
 
             optimizer.zero_grad()
             loss.backward()
@@ -195,3 +204,4 @@ def updatePolicy(
         epochsRun=epochsRun,
         entropyCoef=entropyCoef,
     )
+

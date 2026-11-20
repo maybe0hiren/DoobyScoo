@@ -15,10 +15,10 @@ from ..environment.observation import (
     OBSERVATION_SIZE,
 )
 
-ARCHITECTURE_ID = "doobyscoo-recurrent-ppo-v4"
+ARCHITECTURE_ID = "doobyscoo-score-aware-recurrent-ppo-v5"
 OPPOSITE_ACTION = (1, 0, 3, 2)
 DIRECTION_CODES = 5
-DIR_FEATURE_SIZE = 17
+DIR_FEATURE_SIZE = 18
 MASKED_LOGIT_VALUE = -1e9
 
 
@@ -65,9 +65,18 @@ def maskActionLogits(logits, actionMask):
 
 
 class RecurrentPolicy(nn.Module):
-    """Recurrent actor-critic with 5x5 local view, legal action masking,
-    dead-end/junction topology awareness, 5-Bone + End compass features,
-    and LSTM episodic memory.
+    """Score-Aware Recurrent Actor-Critic Policy (v5).
+
+    Combines:
+      1. Observation encoder over the 95-feature partial observation (including
+         5x5 local view, legal action mask, dead-end/junction structure, episodic
+         visitation/oscillation indicators, and 5-Bone + End compass features).
+      2. Recurrent LSTM memory (128 hidden units) tracking episodic history.
+      3. Per-direction structural utility scorer (`dirLinear` + `dirEncoder` + `dirActor`)
+         evaluating each of the 4 cardinal directions (UP, DOWN, LEFT, RIGHT) for
+         unexplored frontier preference, dead-end avoidance, revisit & edge-repeat
+         suppression, oscillation breaking, and score-aware Bone/End objective alignment.
+      4. Unrestricted context-dependent actor head + value critic head.
     """
 
     def __init__(self, observationSize=OBSERVATION_SIZE, hiddenSize=128):
@@ -91,9 +100,9 @@ class RecurrentPolicy(nn.Module):
             _orthogonal(nn.Linear(DIR_FEATURE_SIZE, self.dirHidden), 2 ** 0.5),
             nn.Tanh(),
         )
-        self.ctxToDir = _orthogonal(nn.Linear(self.hiddenSize, self.dirHidden), 0.2)
-        self.dirActor = _orthogonal(nn.Linear(self.dirHidden, 1), 0.05)
-        self.actor = _orthogonal(nn.Linear(headIn, 4), 0.01)
+        self.ctxToDir = _orthogonal(nn.Linear(self.hiddenSize, self.dirHidden), 0.25)
+        self.dirActor = _orthogonal(nn.Linear(self.dirHidden, 1), 0.1)
+        self.actor = _orthogonal(nn.Linear(headIn, 4), 0.05)
         self.critic = nn.Sequential(
             _orthogonal(nn.Linear(headIn, 64), 2 ** 0.5),
             nn.Tanh(),
@@ -177,12 +186,20 @@ class RecurrentPolicy(nn.Module):
         movedLast = 1.0 - observation[..., 21:22]
         rawRev = (lastAct.index_select(-1, revIdx) * movedLast).unsqueeze(-1) * isOpen
         nonDeadOpenCount = (isOpen * (1.0 - deadEndExit)).sum(dim=-2, keepdim=True)
-        # Only treat reverse as undesirable when there is at least one other non-dead-end open exit
         isRev = rawRev * (nonDeadOpenCount > 1.5).float()
         bumpedThisDir = (lastAct * observation[..., 21:22]).unsqueeze(-1)
-        endReady = isEnd * (1.0 - 0.5 * observation[..., 7:8].unsqueeze(-1))
+        endReady = isEnd * (1.0 - 0.35 * observation[..., 7:8].unsqueeze(-1))
+
+        if self.observationSize >= EXPLORATION_MEMORY_OFFSET + 6:
+            loopActive = observation[..., EXPLORATION_MEMORY_OFFSET + 4 : EXPLORATION_MEMORY_OFFSET + 5].unsqueeze(-1)
+            oscillationReverse = isRev * loopActive
+        else:
+            oscillationReverse = torch.zeros_like(isRev)
 
         nonDeadOpen = isOpen * (1.0 - deadEndExit)
+        # Dampen directional compass pulls onto already-visited cells so compass never traps the Dog in a wall oscillation
+        visitDamp = 1.0 / (1.0 + 3.0 * nVisits + 3.0 * eVisits)
+
         if self.observationSize >= BONE_OBSERVATION_OFFSET + MAX_BONES * BONE_FEATURES_PER_SLOT:
             boneFlat = rest[..., (BONE_OBSERVATION_OFFSET - 4) : (BONE_OBSERVATION_OFFSET - 4) + MAX_BONES * BONE_FEATURES_PER_SLOT]
             boneReshaped = boneFlat.reshape(*boneFlat.shape[:-1], MAX_BONES, BONE_FEATURES_PER_SLOT)
@@ -206,7 +223,7 @@ class RecurrentPolicy(nn.Module):
                 ],
                 dim=-1,
             )
-            boneCompass = dirPull.unsqueeze(-1) * nonDeadOpen
+            boneCompass = dirPull.unsqueeze(-1) * nonDeadOpen * visitDamp
         else:
             boneCompass = torch.zeros_like(unexplored)
 
@@ -216,9 +233,9 @@ class RecurrentPolicy(nn.Module):
             targetDx = observation[..., OBJECTIVE_OFFSET + 3]
             targetDy = observation[..., OBJECTIVE_OFFSET + 4]
             remBonesRatio = observation[..., 7:8]
-            endWeight = (1.0 - 0.65 * remBonesRatio).unsqueeze(-1)
-            endCompass = self._directionalPull(endDx, endDy).unsqueeze(-1) * nonDeadOpen * endWeight
-            targetCompass = self._directionalPull(targetDx, targetDy).unsqueeze(-1) * nonDeadOpen
+            endWeight = (1.0 - 0.55 * remBonesRatio).unsqueeze(-1)
+            endCompass = self._directionalPull(endDx, endDy).unsqueeze(-1) * nonDeadOpen * endWeight * visitDamp
+            targetCompass = self._directionalPull(targetDx, targetDy).unsqueeze(-1) * nonDeadOpen * visitDamp
         else:
             endCompass = torch.zeros_like(unexplored)
             targetCompass = boneCompass
@@ -244,6 +261,7 @@ class RecurrentPolicy(nn.Module):
                 targetCompass,
                 endCompass,
                 corridorContinue,
+                oscillationReverse,
             ],
             dim=-1,
         )
@@ -253,11 +271,11 @@ class RecurrentPolicy(nn.Module):
         joint = torch.cat([lstmOut, encoded], dim=-1)
         rawActor = self.actor(joint)
         if dirTensor is not None:
-            linScore = 5.0 * self.dirLinear(dirTensor.detach()).squeeze(-1)
+            linScore = 4.0 * self.dirLinear(dirTensor.detach()).squeeze(-1)
             dirEmb = self.dirEncoder(dirTensor)
             ctxEmb = self.ctxToDir(lstmOut).unsqueeze(-2)
             mlpScore = self.dirActor(torch.tanh(dirEmb + ctxEmb)).squeeze(-1)
-            logits = linScore + 1.2 * torch.tanh(rawActor + mlpScore)
+            logits = linScore + rawActor + mlpScore
         else:
             logits = rawActor
         if actionMask is not None:
@@ -314,22 +332,26 @@ class RecurrentPolicy(nn.Module):
 
 @torch.no_grad()
 def chooseAction(model, observation, state=None, deterministic=False, logitBias=None, actionMask=None):
-    """Select a legal action using masked policy probabilities.
-    deterministic=False samples from the masked policy (training);
-    deterministic=True takes the masked argmax (evaluation / competitive inference)."""
+    """Select a legal action using masked policy probabilities + active episodic navigation bias.
+
+    When `logitBias` is provided (from `env.computeNavigationActionBias()`), it is applied
+    in BOTH stochastic training and deterministic evaluation so the action-selection system
+    actively breaks detected oscillations, avoids known empty dead ends, and pursues
+    score-optimal objectives without repeating the same loop.
+    """
     obsTensor = torch.as_tensor(observation, dtype=torch.float32)
     if obsTensor.dim() == 1:
         obsTensor = obsTensor.unsqueeze(0)
     mask = extractActionMask(obsTensor, actionMask=actionMask)
     recState = model.initialState(device=obsTensor.device) if state is None else RecurrentState.fromTuple(state)
     logits, value, nextState = model.forwardStep(obsTensor, recState, actionMask=mask)
-    samplingLogits = logits
-    if not deterministic and logitBias is not None:
+    activeLogits = logits
+    if logitBias is not None:
         biasTensor = torch.as_tensor(logitBias, dtype=torch.float32, device=logits.device).view_as(logits)
-        samplingLogits = maskActionLogits(logits + biasTensor, mask)
-    distribution = Categorical(logits=samplingLogits)
+        activeLogits = maskActionLogits(logits + biasTensor, mask)
+    distribution = Categorical(logits=activeLogits)
     baseDist = Categorical(logits=logits)
-    action = logits.argmax(dim=-1) if deterministic else distribution.sample()
+    action = activeLogits.argmax(dim=-1) if deterministic else distribution.sample()
     actionInt = int(action.item())
     logProb = float(baseDist.log_prob(action).item())
     nextState.recordAction(obsTensor, actionInt)
@@ -342,11 +364,12 @@ def chooseActionsBatch(model, observations, state, deterministic=False, logitBia
     obsTensor = torch.as_tensor(observations, dtype=torch.float32)
     mask = extractActionMask(obsTensor, actionMask=actionMask)
     logits, values, nextState = model.forwardStep(obsTensor, state, actionMask=mask)
-    samplingLogits = logits
-    if not deterministic and logitBias is not None:
+    activeLogits = logits
+    if logitBias is not None:
         biasTensor = torch.as_tensor(logitBias, dtype=torch.float32, device=logits.device).view_as(logits)
-        samplingLogits = maskActionLogits(logits + biasTensor, mask)
-    samplingDist = Categorical(logits=samplingLogits)
+        activeLogits = maskActionLogits(logits + biasTensor, mask)
+    samplingDist = Categorical(logits=activeLogits)
     baseDist = Categorical(logits=logits)
-    actions = logits.argmax(dim=-1) if deterministic else samplingDist.sample()
+    actions = activeLogits.argmax(dim=-1) if deterministic else samplingDist.sample()
     return actions, baseDist.log_prob(actions), values, baseDist.entropy(), nextState
+

@@ -10,6 +10,13 @@ var bob_phase: float = 0.0
 var is_moving: bool = false
 var is_celebrating: bool = false
 var step_duration: float = 0.16
+var base_scale: float = 1.0
+
+
+func set_base_scale(s: float) -> void:
+	base_scale = s
+	if !is_moving:
+		scale = Vector2(base_scale, base_scale)
 
 
 func _ready() -> void:
@@ -52,9 +59,9 @@ func animate_teleport(pit_world_pos: Vector2, dest_cell: Vector2i, dest_world_po
 	tween.set_trans(Tween.TRANS_BACK)
 	tween.set_ease(Tween.EASE_IN_OUT)
 	tween.tween_property(self, "position", pit_world_pos, step_duration * 0.45)
-	tween.tween_property(self, "scale", Vector2(0.15, 0.15), step_duration * 0.25)
+	tween.tween_property(self, "scale", Vector2(0.15, 0.15) * base_scale, step_duration * 0.25)
 	tween.tween_callback(func(): position = dest_world_pos)
-	tween.tween_property(self, "scale", Vector2(1.0, 1.0), step_duration * 0.3)
+	tween.tween_property(self, "scale", Vector2(base_scale, base_scale), step_duration * 0.3)
 	await tween.finished
 	is_moving = false
 	animation_finished.emit()
@@ -77,15 +84,15 @@ func animate_blocked(action: int) -> void:
 
 func animate_bone_pickup() -> void:
 	var tween := create_tween()
-	tween.tween_property(self, "scale", Vector2(1.28, 1.28), 0.08)
-	tween.tween_property(self, "scale", Vector2(1.0, 1.0), 0.08)
+	tween.tween_property(self, "scale", Vector2(1.28, 1.28) * base_scale, 0.08)
+	tween.tween_property(self, "scale", Vector2(base_scale, base_scale), 0.08)
 
 
 func celebrate() -> void:
 	is_celebrating = true
 	var tween := create_tween()
-	tween.tween_property(self, "scale", Vector2(1.3, 1.3), 0.15)
-	tween.tween_property(self, "scale", Vector2(1.0, 1.0), 0.15)
+	tween.tween_property(self, "scale", Vector2(1.3, 1.3) * base_scale, 0.15)
+	tween.tween_property(self, "scale", Vector2(base_scale, base_scale), 0.15)
 
 
 func _draw() -> void:

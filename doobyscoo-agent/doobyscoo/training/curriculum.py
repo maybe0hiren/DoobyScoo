@@ -8,7 +8,7 @@ class BalancedMapSampler:
     Maps are drawn from a shuffled deck without replacement, so every map is
     played once per pass in a fresh random order and no small subset dominates.
     A configurable share of each batch is reserved for maps the Dog is
-    currently struggling on (low running win rate).
+    currently struggling on (low running win rate or high official score).
     """
 
     def __init__(self, mapPaths, struggleFraction=0.25, uniqueMapsPerBatch=True, rng=None):
@@ -67,3 +67,4 @@ class BalancedMapSampler:
             chosen.extend(self.rng.choices(self.mapPaths, weights=weights, k=struggleSlots))
         self.rng.shuffle(chosen)
         return chosen if count > 1 else chosen[0]
+

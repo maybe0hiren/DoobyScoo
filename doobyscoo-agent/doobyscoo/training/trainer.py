@@ -93,23 +93,11 @@ def optimizeMaze(
     config=None,
     verbose=False,
 ):
-    """Repeatedly attempt and optimize a maze (or list of mazes) to discover better routes and lower scores.
-
-    Follows the 9-step continuous optimization loop:
-      1. Start a fresh attempt on the same maze (preserving model weights, resetting episode state).
-      2. Explore potentially different routes using stochastic sampling + junction diversity.
-      3. Attempt to collect all five Bones.
-      4. Reach the End (or terminate immediately if trainingScore > 100).
-      5. Calculate training score.
-      6. Compare with previous best.
-      7. Save new best solution only when a successful attempt achieves a strictly lower score.
-      8. Use the fresh trajectories (including failed score-limit trajectories) for on-policy PPO learning.
-      9. Start the next attempt up to the configured `updates` and `attemptsPerUpdate` limits.
-    """
+    """Repeatedly attempt and optimize a maze (or list of mazes) to discover better routes and lower scores."""
     cfg = makeConfig(config)
     ppoCfg = cfg["ppo"]
     rc = rewardConfig if rewardConfig is not None else cfg["reward"]
-    diversityBonus = float(cfg["exploration"].get("routeDiversityBonus", 0.45))
+    diversityBonus = float(cfg["exploration"].get("routeDiversityBonus", 0.65))
 
     mazes = mazeData if isinstance(mazeData, (list, tuple)) else [mazeData]
     optTracker = tracker if tracker is not None else MazeOptimizationTracker()
@@ -117,7 +105,10 @@ def optimizeMaze(
     opt = optimizer if optimizer is not None else torch.optim.Adam(model.parameters(), lr=float(learningRate))
 
     emittedEvents = []
-    startEvent = reporter.recordTrainingStarted(len(mazes), maxScoreLimit=rc.get("maxScoreLimit", 100) if isinstance(rc, dict) else getattr(rc, "maxScoreLimit", 100))
+    startEvent = reporter.recordTrainingStarted(
+        len(mazes),
+        maxScoreLimit=rc.get("maxScoreLimit", 100) if isinstance(rc, dict) else getattr(rc, "maxScoreLimit", 100),
+    )
     if startEvent:
         emittedEvents.append(startEvent)
         if verbose:
@@ -169,8 +160,8 @@ def optimizeMaze(
             maxGradNorm=ppoCfg["maxGradNorm"],
             gamma=ppoCfg["gamma"],
             gaeLambda=ppoCfg["gaeLambda"],
-            shortGamma=ppoCfg.get("shortGamma", 0.50),
-            shortLambda=ppoCfg.get("shortLambda", 0.50),
+            shortGamma=ppoCfg.get("shortGamma", 0.55),
+            shortLambda=ppoCfg.get("shortLambda", 0.55),
             shortAdvantageWeight=ppoCfg.get("shortAdvantageWeight", 0.55),
             minibatchEpisodes=ppoCfg["minibatchEpisodes"],
             targetKl=ppoCfg["targetKl"],
@@ -226,7 +217,7 @@ def train(
     episodesPerUpdate = int(cfg["training"]["episodesPerUpdate"])
     maxSteps = int(cfg["training"]["maxSteps"])
     learningRate = float(cfg["ppo"]["learningRate"])
-    diversityBonus = float(cfg["exploration"].get("routeDiversityBonus", 0.45))
+    diversityBonus = float(cfg["exploration"].get("routeDiversityBonus", 0.65))
     threads = int(cfg["training"].get("cpuThreads", 4) or 4)
     if threads > 0:
         torch.set_num_threads(min(threads, max(1, torch.get_num_threads())))
@@ -424,8 +415,8 @@ def train(
             maxGradNorm=ppoCfg["maxGradNorm"],
             gamma=ppoCfg["gamma"],
             gaeLambda=ppoCfg["gaeLambda"],
-            shortGamma=ppoCfg.get("shortGamma", 0.50),
-            shortLambda=ppoCfg.get("shortLambda", 0.50),
+            shortGamma=ppoCfg.get("shortGamma", 0.55),
+            shortLambda=ppoCfg.get("shortLambda", 0.55),
             shortAdvantageWeight=ppoCfg.get("shortAdvantageWeight", 0.55),
             minibatchEpisodes=ppoCfg["minibatchEpisodes"],
             targetKl=ppoCfg["targetKl"],
@@ -647,8 +638,8 @@ def continualLearnStep(
             maxGradNorm=ppoCfg["maxGradNorm"],
             gamma=ppoCfg["gamma"],
             gaeLambda=ppoCfg["gaeLambda"],
-            shortGamma=ppoCfg.get("shortGamma", 0.50),
-            shortLambda=ppoCfg.get("shortLambda", 0.50),
+            shortGamma=ppoCfg.get("shortGamma", 0.55),
+            shortLambda=ppoCfg.get("shortLambda", 0.55),
             shortAdvantageWeight=ppoCfg.get("shortAdvantageWeight", 0.55),
             minibatchEpisodes=ppoCfg["minibatchEpisodes"],
             targetKl=ppoCfg["targetKl"],
@@ -750,3 +741,4 @@ def continualLearnStep(
         "progressEvents": progressEvents,
         "progressMessages": [e["formatted"] for e in progressEvents],
     }
+

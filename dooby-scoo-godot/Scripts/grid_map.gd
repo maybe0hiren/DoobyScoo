@@ -3,8 +3,10 @@ extends Control
 signal counts_changed(starts: int, ends: int, bones: int)
 
 const GRID_SIZE := 10
-const CELL_SIZE := 58
-const PADDING := Vector2(24, 24)
+const DEFAULT_CELL_SIZE := 64.0
+const MIN_CELL_SIZE := 32.0
+const MAX_CELL_SIZE := 96.0
+const PADDING := Vector2(12, 12)
 
 const HANDLE_SIZE := 8.0
 const HANDLE_COLOR := Color(1.0, 0.58, 0.12)
@@ -14,6 +16,9 @@ const START := 1
 const END := 2
 const PIT := 3
 const BONE := 4
+
+var cell_size: float = DEFAULT_CELL_SIZE
+var board_offset: Vector2 = PADDING
 
 var grid: Array = []
 var selectedCell := Vector2i(-1, -1)
@@ -40,12 +45,33 @@ var currentTool = Tool.NONE
 
 
 func _ready() -> void:
-	custom_minimum_size = Vector2(GRID_SIZE * CELL_SIZE + PADDING.x * 2, GRID_SIZE * CELL_SIZE + PADDING.y * 2)
+	custom_minimum_size = Vector2(360, 360)
+	size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	size_flags_vertical = Control.SIZE_EXPAND_FILL
+	resized.connect(_recalculate_layout)
 	_init_empty_grid()
 	if !MazeSession.loaded_maze.is_empty() and MazeSession.loaded_maze.has("grid"):
 		load_maze(MazeSession.loaded_maze["grid"])
 	else:
 		counts_changed.emit(startCount, endCount, boneCount)
+	_recalculate_layout()
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_RESIZED:
+		_recalculate_layout()
+
+
+func _recalculate_layout() -> void:
+	var avail_w: float = maxf(size.x - PADDING.x * 2.0, GRID_SIZE * MIN_CELL_SIZE)
+	var avail_h: float = maxf(size.y - PADDING.y * 2.0, GRID_SIZE * MIN_CELL_SIZE)
+	var side: float = minf(avail_w, avail_h)
+	cell_size = clampf(floorf(side / float(GRID_SIZE)), MIN_CELL_SIZE, MAX_CELL_SIZE)
+	var board_span: float = float(GRID_SIZE) * cell_size
+	board_offset = Vector2(
+		maxf(PADDING.x, floorf((size.x - board_span) * 0.5)),
+		maxf(PADDING.y, floorf((size.y - board_span) * 0.5))
+	)
 	queue_redraw()
 
 
@@ -66,9 +92,9 @@ func _init_empty_grid() -> void:
 
 
 func cell_center(cell: Vector2i) -> Vector2:
-	return PADDING + Vector2(
-		cell.x * CELL_SIZE + CELL_SIZE / 2.0,
-		cell.y * CELL_SIZE + CELL_SIZE / 2.0
+	return board_offset + Vector2(
+		cell.x * cell_size + cell_size / 2.0,
+		cell.y * cell_size + cell_size / 2.0
 	)
 
 
@@ -86,64 +112,68 @@ func draw_arrow(start: Vector2, end: Vector2, color: Color, width: float = 3.0) 
 
 
 func _draw_bone_icon(center: Vector2) -> void:
+	var s: float = cell_size / 58.0
 	var bone_col := Color(0.99, 0.95, 0.78)
 	var outline_col := Color(0.68, 0.48, 0.16)
-	draw_circle(center + Vector2(-9, -5), 5.5, outline_col)
-	draw_circle(center + Vector2(-9, 5), 5.5, outline_col)
-	draw_circle(center + Vector2(9, -5), 5.5, outline_col)
-	draw_circle(center + Vector2(9, 5), 5.5, outline_col)
-	draw_line(center + Vector2(-9, 0), center + Vector2(9, 0), outline_col, 9.0)
+	draw_circle(center + Vector2(-9, -5) * s, 5.5 * s, outline_col)
+	draw_circle(center + Vector2(-9, 5) * s, 5.5 * s, outline_col)
+	draw_circle(center + Vector2(9, -5) * s, 5.5 * s, outline_col)
+	draw_circle(center + Vector2(9, 5) * s, 5.5 * s, outline_col)
+	draw_line(center + Vector2(-9, 0) * s, center + Vector2(9, 0) * s, outline_col, 9.0 * s)
 
-	draw_circle(center + Vector2(-9, -5), 4.0, bone_col)
-	draw_circle(center + Vector2(-9, 5), 4.0, bone_col)
-	draw_circle(center + Vector2(9, -5), 4.0, bone_col)
-	draw_circle(center + Vector2(9, 5), 4.0, bone_col)
-	draw_line(center + Vector2(-9, 0), center + Vector2(9, 0), bone_col, 6.0)
+	draw_circle(center + Vector2(-9, -5) * s, 4.0 * s, bone_col)
+	draw_circle(center + Vector2(-9, 5) * s, 4.0 * s, bone_col)
+	draw_circle(center + Vector2(9, -5) * s, 4.0 * s, bone_col)
+	draw_circle(center + Vector2(9, 5) * s, 4.0 * s, bone_col)
+	draw_line(center + Vector2(-9, 0) * s, center + Vector2(9, 0) * s, bone_col, 6.0 * s)
 
 
 func _draw_start_icon(center: Vector2) -> void:
-	draw_circle(center, 18.0, Color(0.18, 0.78, 0.34, 0.35))
-	draw_circle(center, 13.0, Color(0.16, 0.72, 0.30))
-	draw_circle(center, 9.0, Color(0.32, 0.92, 0.46))
-	draw_circle(center + Vector2(0, 2), 4.5, Color.WHITE)
-	draw_circle(center + Vector2(-4, -3), 2.2, Color.WHITE)
-	draw_circle(center + Vector2(0, -5), 2.2, Color.WHITE)
-	draw_circle(center + Vector2(4, -3), 2.2, Color.WHITE)
+	var s: float = cell_size / 58.0
+	draw_circle(center, 18.0 * s, Color(0.18, 0.78, 0.34, 0.35))
+	draw_circle(center, 13.0 * s, Color(0.16, 0.72, 0.30))
+	draw_circle(center, 9.0 * s, Color(0.32, 0.92, 0.46))
+	draw_circle(center + Vector2(0, 2) * s, 4.5 * s, Color.WHITE)
+	draw_circle(center + Vector2(-4, -3) * s, 2.2 * s, Color.WHITE)
+	draw_circle(center + Vector2(0, -5) * s, 2.2 * s, Color.WHITE)
+	draw_circle(center + Vector2(4, -3) * s, 2.2 * s, Color.WHITE)
 
 
 func _draw_end_icon(center: Vector2) -> void:
-	draw_circle(center, 18.0, Color(0.98, 0.28, 0.28, 0.35))
-	draw_circle(center, 13.0, Color(0.88, 0.18, 0.22))
-	draw_circle(center, 8.5, Color(1.0, 0.84, 0.18))
-	draw_circle(center, 4.0, Color(0.88, 0.18, 0.22))
+	var s: float = cell_size / 58.0
+	draw_circle(center, 18.0 * s, Color(0.98, 0.28, 0.28, 0.35))
+	draw_circle(center, 13.0 * s, Color(0.88, 0.18, 0.22))
+	draw_circle(center, 8.5 * s, Color(1.0, 0.84, 0.18))
+	draw_circle(center, 4.0 * s, Color(0.88, 0.18, 0.22))
 
 
 func _draw_pit_icon(center: Vector2) -> void:
-	draw_circle(center, 15.0, Color(0.26, 0.12, 0.42))
-	draw_circle(center, 11.0, Color(0.12, 0.05, 0.22))
-	draw_circle(center, 6.0, Color(0.04, 0.02, 0.08))
-	draw_arc(center, 12.0, 0.3, 4.8, 16, Color(0.55, 0.32, 0.88), 2.0)
+	var s: float = cell_size / 58.0
+	draw_circle(center, 15.0 * s, Color(0.26, 0.12, 0.42))
+	draw_circle(center, 11.0 * s, Color(0.12, 0.05, 0.22))
+	draw_circle(center, 6.0 * s, Color(0.04, 0.02, 0.08))
+	draw_arc(center, 12.0 * s, 0.3, 4.8, 16, Color(0.55, 0.32, 0.88), 2.0 * s)
 
 
 func _draw() -> void:
 	var board_rect := Rect2(
-		PADDING - Vector2(8, 8),
-		Vector2(GRID_SIZE * CELL_SIZE + 16, GRID_SIZE * CELL_SIZE + 16)
+		board_offset - Vector2(8, 8),
+		Vector2(GRID_SIZE * cell_size + 16, GRID_SIZE * cell_size + 16)
 	)
 	draw_rect(board_rect, Color(0.16, 0.22, 0.18, 0.88), true)
 	draw_rect(board_rect, Color(0.95, 0.85, 0.55), false, 3.0)
 
 	for row in range(GRID_SIZE):
 		for col in range(GRID_SIZE):
-			var x := PADDING.x + col * CELL_SIZE
-			var y := PADDING.y + row * CELL_SIZE
-			var cell_rect := Rect2(x, y, CELL_SIZE, CELL_SIZE)
+			var x := board_offset.x + col * cell_size
+			var y := board_offset.y + row * cell_size
+			var cell_rect := Rect2(x, y, cell_size, cell_size)
 			var checker := (row + col) % 2 == 0
 			var bg_col := Color(0.96, 0.94, 0.86) if checker else Color(0.91, 0.88, 0.78)
 			draw_rect(cell_rect, bg_col, true)
 			draw_rect(cell_rect, Color(0.76, 0.72, 0.62, 0.55), false, 1.0)
 
-			var center := Vector2(x + CELL_SIZE / 2.0, y + CELL_SIZE / 2.0)
+			var center := Vector2(x + cell_size / 2.0, y + cell_size / 2.0)
 			match int(grid[row][col]["element"]):
 				START:
 					_draw_start_icon(center)
@@ -158,16 +188,16 @@ func _draw() -> void:
 	var wall_color := Color(0.24, 0.16, 0.10)
 	for row in range(GRID_SIZE):
 		for col in range(GRID_SIZE):
-			var x := PADDING.x + col * CELL_SIZE
-			var y := PADDING.y + row * CELL_SIZE
+			var x := board_offset.x + col * cell_size
+			var y := board_offset.y + row * cell_size
 			if bool(grid[row][col]["top"]):
-				draw_line(Vector2(x, y), Vector2(x + CELL_SIZE, y), wall_color, 5.0)
+				draw_line(Vector2(x, y), Vector2(x + cell_size, y), wall_color, 5.0)
 			if bool(grid[row][col]["bottom"]):
-				draw_line(Vector2(x, y + CELL_SIZE), Vector2(x + CELL_SIZE, y + CELL_SIZE), wall_color, 5.0)
+				draw_line(Vector2(x, y + cell_size), Vector2(x + cell_size, y + cell_size), wall_color, 5.0)
 			if bool(grid[row][col]["left"]):
-				draw_line(Vector2(x, y), Vector2(x, y + CELL_SIZE), wall_color, 5.0)
+				draw_line(Vector2(x, y), Vector2(x, y + cell_size), wall_color, 5.0)
 			if bool(grid[row][col]["right"]):
-				draw_line(Vector2(x + CELL_SIZE, y), Vector2(x + CELL_SIZE, y + CELL_SIZE), wall_color, 5.0)
+				draw_line(Vector2(x + cell_size, y), Vector2(x + cell_size, y + cell_size), wall_color, 5.0)
 
 	# Draw permanent pit destination arrows
 	for row in range(GRID_SIZE):
@@ -187,13 +217,13 @@ func _draw() -> void:
 
 	# Selected cell highlight and wall handles
 	if selectedCell.x != -1:
-		var x := PADDING.x + selectedCell.x * CELL_SIZE
-		var y := PADDING.y + selectedCell.y * CELL_SIZE
-		draw_rect(Rect2(x, y, CELL_SIZE, CELL_SIZE), Color(0.2, 0.6, 1.0, 0.25), true)
-		draw_circle(Vector2(x + CELL_SIZE / 2.0, y), HANDLE_SIZE, HANDLE_COLOR)
-		draw_circle(Vector2(x + CELL_SIZE / 2.0, y + CELL_SIZE), HANDLE_SIZE, HANDLE_COLOR)
-		draw_circle(Vector2(x, y + CELL_SIZE / 2.0), HANDLE_SIZE, HANDLE_COLOR)
-		draw_circle(Vector2(x + CELL_SIZE, y + CELL_SIZE / 2.0), HANDLE_SIZE, HANDLE_COLOR)
+		var x := board_offset.x + selectedCell.x * cell_size
+		var y := board_offset.y + selectedCell.y * cell_size
+		draw_rect(Rect2(x, y, cell_size, cell_size), Color(0.2, 0.6, 1.0, 0.25), true)
+		draw_circle(Vector2(x + cell_size / 2.0, y), HANDLE_SIZE, HANDLE_COLOR)
+		draw_circle(Vector2(x + cell_size / 2.0, y + cell_size), HANDLE_SIZE, HANDLE_COLOR)
+		draw_circle(Vector2(x, y + cell_size / 2.0), HANDLE_SIZE, HANDLE_COLOR)
+		draw_circle(Vector2(x + cell_size, y + cell_size / 2.0), HANDLE_SIZE, HANDLE_COLOR)
 
 
 func _notify_dirty() -> void:
@@ -248,7 +278,7 @@ func place_element(row: int, col: int, element: int) -> void:
 
 
 func get_cell_position(row: int, col: int) -> Vector2:
-	return Vector2(PADDING.x + col * CELL_SIZE, PADDING.y + row * CELL_SIZE)
+	return Vector2(board_offset.x + col * cell_size, board_offset.y + row * cell_size)
 
 
 func point_in_circle(point: Vector2, center: Vector2, radius: float) -> bool:
@@ -259,10 +289,10 @@ func get_clicked_handle(mouse_pos: Vector2) -> String:
 	if selectedCell.x == -1:
 		return ""
 	var pos := get_cell_position(selectedCell.y, selectedCell.x)
-	var top := Vector2(pos.x + CELL_SIZE / 2.0, pos.y)
-	var bottom := Vector2(pos.x + CELL_SIZE / 2.0, pos.y + CELL_SIZE)
-	var left := Vector2(pos.x, pos.y + CELL_SIZE / 2.0)
-	var right := Vector2(pos.x + CELL_SIZE, pos.y + CELL_SIZE / 2.0)
+	var top := Vector2(pos.x + cell_size / 2.0, pos.y)
+	var bottom := Vector2(pos.x + cell_size / 2.0, pos.y + cell_size)
+	var left := Vector2(pos.x, pos.y + cell_size / 2.0)
+	var right := Vector2(pos.x + cell_size, pos.y + cell_size / 2.0)
 
 	if point_in_circle(mouse_pos, top, HANDLE_SIZE + 2.0):
 		return "top"
@@ -277,11 +307,11 @@ func get_clicked_handle(mouse_pos: Vector2) -> String:
 
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
-		var pos: Vector2 = event.position - PADDING
+		var pos: Vector2 = event.position - board_offset
 		if pos.x < 0 or pos.y < 0:
 			return
-		var col := int(pos.x / CELL_SIZE)
-		var row := int(pos.y / CELL_SIZE)
+		var col := int(pos.x / cell_size)
+		var row := int(pos.y / cell_size)
 		if row < 0 or row >= GRID_SIZE or col < 0 or col >= GRID_SIZE:
 			return
 
@@ -333,11 +363,11 @@ func _gui_input(event: InputEvent) -> void:
 			queue_redraw()
 
 	elif event is InputEventMouseMotion:
-		var pos: Vector2 = event.position - PADDING
+		var pos: Vector2 = event.position - board_offset
 		if pos.x < 0 or pos.y < 0:
 			return
-		var col := int(pos.x / CELL_SIZE)
-		var row := int(pos.y / CELL_SIZE)
+		var col := int(pos.x / cell_size)
+		var row := int(pos.y / cell_size)
 		if row < 0 or row >= GRID_SIZE or col < 0 or col >= GRID_SIZE:
 			return
 

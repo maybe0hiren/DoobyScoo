@@ -4,8 +4,8 @@ import torch
 class RecurrentState:
     """LSTM memory (h, c) for one or more independent episodes.
 
-    A new RecurrentState (all zeros) must be created at every episode boundary;
-    it is carried unchanged between steps of the same episode.
+    A new RecurrentState (all zeros) is created at every episode boundary
+    and carried across steps of the same episode.
     """
 
     def __init__(self, hiddenSize=128, batchSize=1, device="cpu", h=None, c=None):
@@ -69,3 +69,4 @@ class RecurrentState:
         if index == 1:
             return self.c
         raise IndexError("RecurrentState index out of range")
+

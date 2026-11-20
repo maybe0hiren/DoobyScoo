@@ -7,16 +7,17 @@ from .rollout import collectEpisodes, gridHash
 
 
 class RehearsalManager:
-    """Pool of previously learned maps that are re-practised with FRESH on-policy rollouts.
+    """Pool of previously learned maps that are re-practised with FRESH on-policy rollouts."""
 
-    PPO is on-policy, so stale transitions are never replayed; instead the
-    current policy is rolled out again on old maps and those new trajectories
-    are mixed into each update. Test and validation maps can never enter the
-    pool (excluded by folder and by grid hash).
-    """
-
-    def __init__(self, trainMapsFolder="maps/train", playedMapsFolder="maps/played", excludedFolders=None,
-                 extraMaps=None, excludedHashes=None, rng=None):
+    def __init__(
+        self,
+        trainMapsFolder="maps/train",
+        playedMapsFolder="maps/played",
+        excludedFolders=None,
+        extraMaps=None,
+        excludedHashes=None,
+        rng=None,
+    ):
         self.trainMapsFolder = Path(trainMapsFolder) if trainMapsFolder else None
         self.playedMapsFolder = Path(playedMapsFolder) if playedMapsFolder else None
         defaultExcluded = ["maps/test", "maps/validation"]
@@ -88,7 +89,6 @@ class RehearsalManager:
         return selected
 
     def _weightedSample(self, paths, count):
-        # Favour maps whose recent rehearsal went badly, but keep every map reachable.
         weights = [max(0.2, 1.3 - 0.8 * self.winHistory.get(str(p), 0.5)) for p in paths]
         if count <= len(paths):
             pool, w, out = list(paths), list(weights), []
@@ -114,3 +114,4 @@ class RehearsalManager:
             ep["rehearsal"] = True
             self.recordOutcome(path, ep["won"])
         return episodes
+

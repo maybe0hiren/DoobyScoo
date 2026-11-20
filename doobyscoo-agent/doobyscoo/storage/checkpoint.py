@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
-CHECKPOINT_FORMAT = 4
+CHECKPOINT_FORMAT = 5
 
 
 class IncompatibleCheckpointError(RuntimeError):
@@ -242,7 +242,14 @@ def initializeFreshModel(path, model, seed=None, trainingConfig=None, reason="fr
         except OSError:
             pass
     modelId = uuid.uuid4().hex[:12]
-    freshInit = {"timestamp": time.time(), "seed": seed, "reason": reason, "modelId": modelId}
+    freshInit = {
+        "timestamp": time.time(),
+        "seed": seed,
+        "reason": reason,
+        "modelId": modelId,
+        "architecture": getattr(model, "architecture", None),
+        "startedFromScratch": True,
+    }
     for suffix in (".bak", ".tmp"):
         stale = pathObj.with_suffix(pathObj.suffix + suffix)
         if stale.exists():
@@ -259,3 +266,4 @@ def initializeFreshModel(path, model, seed=None, trainingConfig=None, reason="fr
         saveRng=False,
     )
     return modelId, freshInit
+

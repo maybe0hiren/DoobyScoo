@@ -34,6 +34,7 @@ grow_horizontal = 2
 grow_vertical = 2
 texture = ExtResource("2_bg")
 expand_mode = 1
+stretch_mode = 6
 
 [node name="MainHBox" type="HBoxContainer" parent="." unique_id=19001003]
 layout_mode = 1
@@ -48,18 +49,27 @@ grow_horizontal = 2
 grow_vertical = 2
 theme_override_constants/separation = 16
 
-[node name="BoardContainer" type="CenterContainer" parent="MainHBox" unique_id=19001004]
+[node name="BoardContainer" type="Control" parent="MainHBox" unique_id=19001004]
+custom_minimum_size = Vector2(360, 360)
 layout_mode = 2
 size_flags_horizontal = 3
+size_flags_vertical = 3
 
 [node name="GameplayBoard" type="Control" parent="MainHBox/BoardContainer" unique_id=19001005]
-custom_minimum_size = Vector2(600, 600)
-layout_mode = 2
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
 script = ExtResource("3_board")
 
 [node name="SidePanel" type="PanelContainer" parent="MainHBox" unique_id=19001006]
-custom_minimum_size = Vector2(460, 0)
+custom_minimum_size = Vector2(420, 0)
 layout_mode = 2
+size_flags_vertical = 3
 theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
 
 [node name="PanelMargin" type="MarginContainer" parent="MainHBox/SidePanel" unique_id=19001007]

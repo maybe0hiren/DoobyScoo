@@ -1,0 +1,947 @@
+{
+  "grid": [
+    [
+      {
+        "bottom": false,
+        "element": 2,
+        "left": true,
+        "pit_destination": null,
+        "right": false,
+        "top": true,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": true,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": true,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": true,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": true,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": true,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": true,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": true,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": true,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 2,
+        "left": false,
+        "pit_destination": null,
+        "right": true,
+        "top": true,
+        "visited": false
+      }
+    ],
+    [
+      {
+        "bottom": false,
+        "element": 0,
+        "left": true,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": true,
+        "top": false,
+        "visited": false
+      }
+    ],
+    [
+      {
+        "bottom": false,
+        "element": 0,
+        "left": true,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": true,
+        "top": false,
+        "visited": false
+      }
+    ],
+    [
+      {
+        "bottom": false,
+        "element": 0,
+        "left": true,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 3,
+        "left": false,
+        "pit_destination": {
+          "x": 1,
+          "y": 9
+        },
+        "right": true,
+        "top": false,
+        "visited": false
+      }
+    ],
+    [
+      {
+        "bottom": false,
+        "element": 0,
+        "left": true,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": true,
+        "top": false,
+        "visited": false
+      }
+    ],
+    [
+      {
+        "bottom": false,
+        "element": 4,
+        "left": true,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 3,
+        "left": false,
+        "pit_destination": {
+          "x": 4,
+          "y": 0
+        },
+        "right": true,
+        "top": false,
+        "visited": false
+      }
+    ],
+    [
+      {
+        "bottom": false,
+        "element": 4,
+        "left": true,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 3,
+        "left": false,
+        "pit_destination": {
+          "x": 1,
+          "y": 6
+        },
+        "right": true,
+        "top": false,
+        "visited": false
+      }
+    ],
+    [
+      {
+        "bottom": false,
+        "element": 4,
+        "left": true,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 3,
+        "left": false,
+        "pit_destination": {
+          "x": 1,
+          "y": 7
+        },
+        "right": true,
+        "top": false,
+        "visited": false
+      }
+    ],
+    [
+      {
+        "bottom": false,
+        "element": 4,
+        "left": true,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": false,
+        "element": 3,
+        "left": false,
+        "pit_destination": {
+          "x": 1,
+          "y": 8
+        },
+        "right": true,
+        "top": false,
+        "visited": false
+      }
+    ],
+    [
+      {
+        "bottom": true,
+        "element": 4,
+        "left": true,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": true,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": true,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": true,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": true,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": true,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": true,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": true,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": true,
+        "element": 0,
+        "left": false,
+        "pit_destination": null,
+        "right": false,
+        "top": false,
+        "visited": false
+      },
+      {
+        "bottom": true,
+        "element": 1,
+        "left": false,
+        "pit_destination": null,
+        "right": true,
+        "top": false,
+        "visited": false
+      }
+    ]
+  ],
+  "metadata": {
+    "author": "Hiren",
+    "created_at": "2026-08-01T19:25:56",
+    "editor_version": 1.0,
+    "grid_size": 10.0,
+    "maze_name": "Maze",
+    "grid_hash": "0d2e85f0fadc0bc8"
+  }
+}

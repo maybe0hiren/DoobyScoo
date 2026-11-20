@@ -152,51 +152,51 @@ class EnvironmentTests(unittest.TestCase):
     def testFirstVisitRevisitAndRepeatedRevisitPenaltiesAndReset(self):
         rc = RewardConfig()
         env = MazeEnvironment(sampleMaze(), maxSteps=30, rewardConfig=rc)
-        # Step UP to (0, 1): first visit to (0, 1) -> penalty is 0
+        # Step UP to (0, 1): first visit to (0, 1) -> revisit penalty is 0
         _, rFirst, _, infoFirst = env.step(0)
         self.assertTrue(infoFirst["newCell"])
         self.assertFalse(infoFirst["revisit"])
         self.assertEqual(infoFirst["visitCount"], 1)
         self.assertEqual(rc.revisitPenaltyForVisit(1), 0.0)
-        self.assertIn("novelty", infoFirst["rewardBreakdown"])
         self.assertNotIn("revisit", infoFirst["rewardBreakdown"])
-        self.assertAlmostEqual(rFirst, rc.movePenalty + rc.noveltyReward, places=5)
+        self.assertLessEqual(rFirst, rc.movePenalty + max(0.0, rc.progressReward))
 
-        # Step DOWN back to Start (0, 2): 2nd visit -> penalty is -2
+        # Step DOWN back to Start (0, 2): 2nd visit -> revisit penalty is -2.5
         _, rRev2, _, infoRev2 = env.step(1)
         self.assertFalse(infoRev2["newCell"])
         self.assertTrue(infoRev2["revisit"])
         self.assertEqual(infoRev2["visitCount"], 2)
-        self.assertAlmostEqual(infoRev2["rewardBreakdown"]["revisit"], -2.0, places=5)
+        self.assertAlmostEqual(infoRev2["rewardBreakdown"]["revisit"], -2.5, places=5)
 
-        # Step UP to (0, 1) (2nd visit -> -2), then DOWN to (0, 2) (3rd visit -> -4)
+        # Step UP to (0, 1) (2nd visit -> -2.5), then DOWN to (0, 2) (3rd visit -> -5.0)
         env.step(0)
         _, rRev3, _, infoRev3 = env.step(1)
         self.assertTrue(infoRev3["revisit"])
         self.assertEqual(infoRev3["visitCount"], 3)
-        self.assertAlmostEqual(infoRev3["rewardBreakdown"]["revisit"], -4.0, places=5)
+        self.assertAlmostEqual(infoRev3["rewardBreakdown"]["revisit"], -5.0, places=5)
         self.assertLess(rRev3, rRev2)
 
-        # Step UP to (0, 1) (3rd visit -> -4), then DOWN to (0, 2) (4th visit -> -6)
+        # Step UP to (0, 1) (3rd visit -> -5.0), then DOWN to (0, 2) (4th visit -> -7.5)
         env.step(0)
         _, rRev4, _, infoRev4 = env.step(1)
         self.assertEqual(infoRev4["visitCount"], 4)
-        self.assertAlmostEqual(infoRev4["rewardBreakdown"]["revisit"], -6.0, places=5)
+        self.assertAlmostEqual(infoRev4["rewardBreakdown"]["revisit"], -7.5, places=5)
 
-        # Step UP to (0, 1) (4th visit -> -6), then DOWN to (0, 2) (5th visit -> -8)
+        # Step UP to (0, 1) (4th visit -> -7.5), then DOWN to (0, 2) (5th visit -> -10.0)
         env.step(0)
         _, _, _, infoRev5 = env.step(1)
         self.assertEqual(infoRev5["visitCount"], 5)
-        self.assertAlmostEqual(infoRev5["rewardBreakdown"]["revisit"], -8.0, places=5)
+        self.assertAlmostEqual(infoRev5["rewardBreakdown"]["revisit"], -10.0, places=5)
 
-        # Step UP to (0, 1) (5th visit -> -8), then DOWN to (0, 2) (6th visit -> capped at -8)
+        # Step UP to (0, 1) (5th visit -> -10.0), then DOWN to (0, 2) (6th visit -> capped at -10.0)
         env.step(0)
         _, _, _, infoRev6 = env.step(1)
         self.assertEqual(infoRev6["visitCount"], 6)
-        self.assertAlmostEqual(infoRev6["rewardBreakdown"]["revisit"], -8.0, places=5)
+        self.assertAlmostEqual(infoRev6["rewardBreakdown"]["revisit"], -10.0, places=5)
 
-        # Verify revisit tracking metrics
+        # Verify revisit & oscillation tracking metrics
         self.assertEqual(env.revisits, 9)
+        self.assertGreaterEqual(env.oscillationsDetected, 1)
         self.assertEqual(len(env.visited), 2)
         self.assertEqual(env.maxVisitCount(), 6)
         self.assertEqual(env.mostFrequentlyRevisitedCell(), [0, 2])
@@ -270,7 +270,7 @@ class EnvironmentTests(unittest.TestCase):
         # Path to collect all 5 Bones in order: UP, UP, RIGHT, RIGHT, DOWN
         actions = [0, 0, 3, 3, 1]
         expectedReductions = [-10.0, -10.0, -10.0, -10.0, -20.0]
-        expectedBoneRewards = [10.0, 10.0, 10.0, 10.0, 20.0]
+        expectedBoneRewards = [12.0, 12.0, 12.0, 12.0, 24.0]
         cumulativeReduction = 0.0
 
         for idx, (act, expRed, expRew) in enumerate(zip(actions, expectedReductions, expectedBoneRewards), start=1):

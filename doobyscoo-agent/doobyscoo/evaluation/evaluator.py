@@ -14,10 +14,7 @@ def evaluate(
     rewardConfig=None,
     enforceScoreLimit=True,
 ):
-    """Evaluate `model` across `paths`. Uses deterministic policy selection by default
-    for reproducible comparisons across training stages; when `episodesPerMap > 1` and
-    `deterministic=False`, runs repeated exploratory attempts to measure multi-attempt
-    route diversity, mistake reduction, and score improvement."""
+    """Evaluate `model` across `paths`."""
     from ..training.metrics import MazeOptimizationTracker
     from ..training.rollout import collectEpisodes, collectRepeatedEpisodes
 
@@ -25,14 +22,17 @@ def evaluate(
     if not pathItems:
         return {
             "winRate": 0.0,
+            "mazeCompletionRate": 0.0,
             "failureRate": 1.0,
             "timeoutRate": 0.0,
             "scoreLimitFailureRate": 0.0,
             "meanScore": 0.0,
             "medianScore": 0.0,
+            "bestScore": 0.0,
             "meanTrainingScore": 0.0,
             "medianTrainingScore": 0.0,
             "meanSteps": 0.0,
+            "averageSteps": 0.0,
             "meanEpisodeLength": 0.0,
             "bonesCollected": 0.0,
             "meanBonesCollected": 0.0,
@@ -48,6 +48,8 @@ def evaluate(
             "totalDeadEndsEncountered": 0,
             "meanRepeatedMistakes": 0.0,
             "totalRepeatedMistakes": 0,
+            "repeatedMoves": 0,
+            "loopsDetected": 0,
             "totalAvoidedMistakes": 0,
             "maxVisitCount": 0,
             "meanWallBumps": 0.0,
@@ -57,6 +59,7 @@ def evaluate(
             "distinctRoutes": 0,
             "scoreImprovementAcrossAttempts": 0.0,
             "episodes": 0,
+            "attempts": 0,
             "modelVersion": int(modelVersion),
             "resultsPerMap": {},
         }
@@ -85,7 +88,7 @@ def evaluate(
                 maxSteps=maxSteps,
                 deterministic=deterministic,
                 rewardConfig=rewardConfig,
-                routeDiversityBonus=0.55 if not deterministic else 0.0,
+                routeDiversityBonus=0.65 if not deterministic else 0.0,
                 enforceScoreLimit=enforceScoreLimit,
             )
         else:
@@ -122,6 +125,7 @@ def evaluate(
     newAreasList = [ep.get("newAreasExplored", ep["uniqueCells"]) for ep in episodes]
     deadEndsList = [ep.get("deadEndsEncountered", 0) for ep in episodes]
     mistakesList = [ep.get("repeatedMistakes", 0) for ep in episodes]
+    oscillationsList = [ep.get("oscillationsDetected", 0) for ep in episodes]
     avoidedList = [ep.get("avoidedPreviousMistakes", 0) for ep in episodes]
     maxVisitList = [ep.get("maxVisitCount", 1) for ep in episodes]
     wallBumpsList = [ep["wallBumps"] for ep in episodes]
@@ -145,6 +149,7 @@ def evaluate(
         mUnique = [e["uniqueCells"] for e in mapEps]
         mDeadEnds = [e.get("deadEndsEncountered", 0) for e in mapEps]
         mMistakes = [e.get("repeatedMistakes", 0) for e in mapEps]
+        mOsc = [e.get("oscillationsDetected", 0) for e in mapEps]
         mNewAreas = [e.get("newAreasExplored", e["uniqueCells"]) for e in mapEps]
         mSummary = optTracker.getMazeSummary(mapName) or {}
         resultsPerMap[mapName] = {
@@ -167,6 +172,7 @@ def evaluate(
             "totalDeadEndsEncountered": int(sum(mDeadEnds)),
             "meanRepeatedMistakes": float(np.mean(mMistakes)),
             "totalRepeatedMistakes": int(sum(mMistakes)),
+            "loopsDetected": int(sum(mOsc)),
             "meanNewAreasExplored": float(np.mean(mNewAreas)),
             "totalNewAreasExplored": int(mSummary.get("totalNewAreasExplored", sum(mNewAreas))),
             "distinctRoutes": int(mSummary.get("distinctRoutes", 0)),
@@ -183,14 +189,17 @@ def evaluate(
     revRateMean = float(np.mean(revisitRates))
     return {
         "winRate": winRate,
+        "mazeCompletionRate": winRate,
         "failureRate": float(1.0 - winRate),
         "timeoutRate": timeoutRate,
         "scoreLimitFailureRate": float(np.mean(scoreLimitFails)),
         "meanScore": float(np.mean(scores)),
         "medianScore": float(np.median(scores)),
+        "bestScore": float(np.min(scores)) if scores else 0.0,
         "meanTrainingScore": float(np.mean(trainingScores)),
         "medianTrainingScore": float(np.median(trainingScores)),
         "meanSteps": float(np.mean(lengths)),
+        "averageSteps": float(np.mean(lengths)),
         "meanEpisodeLength": float(np.mean(lengths)),
         "bonesCollected": float(np.mean(bonesList)),
         "meanBonesCollected": float(np.mean(bonesList)),
@@ -206,6 +215,8 @@ def evaluate(
         "totalDeadEndsEncountered": int(sum(deadEndsList)),
         "meanRepeatedMistakes": float(np.mean(mistakesList)),
         "totalRepeatedMistakes": int(sum(mistakesList)),
+        "repeatedMoves": int(sum(mistakesList)),
+        "loopsDetected": int(sum(oscillationsList)),
         "totalAvoidedMistakes": int(sum(avoidedList)),
         "maxVisitCount": int(max(maxVisitList)) if maxVisitList else 0,
         "meanWallBumps": float(np.mean(wallBumpsList)),
@@ -215,6 +226,8 @@ def evaluate(
         "distinctRoutes": int(globalOpt.get("distinctRoutes", 0)),
         "scoreImprovementAcrossAttempts": float(globalOpt.get("meanScoreImprovement", 0.0)),
         "episodes": len(episodes),
+        "attempts": len(episodes),
         "modelVersion": int(modelVersion),
         "resultsPerMap": resultsPerMap,
     }
+

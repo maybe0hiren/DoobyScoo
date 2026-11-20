@@ -22,31 +22,43 @@ grow_vertical = 2
 script = ExtResource("1_20pxv")
 
 [node name="BG" type="TextureRect" parent="." unique_id=570223850]
-layout_mode = 0
-offset_left = -219.0
-offset_top = 2.0
-offset_right = 1365.0
-offset_bottom = 646.0
-texture = ExtResource("1_n5lbb")
-expand_mode = 1
-
-[node name="HBoxContainer" type="HBoxContainer" parent="." unique_id=243377561]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+texture = ExtResource("1_n5lbb")
+expand_mode = 1
+stretch_mode = 6
+
+[node name="HBoxContainer" type="HBoxContainer" parent="." unique_id=243377561]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 16.0
+offset_top = 12.0
+offset_right = -16.0
+offset_bottom = -12.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 16
 
 [node name="GridMap" type="Control" parent="HBoxContainer" unique_id=1131785181]
+custom_minimum_size = Vector2(360, 360)
 layout_mode = 2
 size_flags_horizontal = 3
+size_flags_vertical = 3
 script = ExtResource("2_gheom")
 metadata/_edit_group_ = true
 
 [node name="Inventory" type="VBoxContainer" parent="HBoxContainer" unique_id=1361154007]
+custom_minimum_size = Vector2(360, 0)
 layout_mode = 2
+size_flags_vertical = 3
 theme_override_constants/separation = 8
+alignment = 1
 
 [node name="Label" type="Label" parent="HBoxContainer/Inventory" unique_id=505817056]
 custom_minimum_size = Vector2(100, 44)

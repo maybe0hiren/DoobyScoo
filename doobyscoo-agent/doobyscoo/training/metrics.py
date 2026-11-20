@@ -78,10 +78,7 @@ def measureRouteDiversity(trajectories):
 
 class MazeOptimizationTracker:
     """Tracks per-maze best solutions, route diversity, dead-end discovery,
-    mistake reduction, and score improvements across attempts.
-
-    Best trajectories are kept strictly for comparison, diagnostics, and exploration
-    guidance — never re-fed as stale trajectories into on-policy PPO updates.
+    oscillation/mistake reduction, and official score improvements across attempts.
     """
 
     def __init__(self, initialState=None):
@@ -116,6 +113,8 @@ class MazeOptimizationTracker:
             "successfulTrajectorySet": [list(t) for t in (data.get("successfulTrajectorySet") or [])],
             "recentTrajectories": [list(t) for t in (data.get("recentTrajectories") or [])][-20:],
             "attemptScores": list(data.get("attemptScores") or [])[-50:],
+            "attemptSteps": list(data.get("attemptSteps") or [])[-50:],
+            "attemptRevisits": list(data.get("attemptRevisits") or [])[-50:],
             "scoreImprovements": list(data.get("scoreImprovements") or []),
             "attemptsBeforeImprovement": list(data.get("attemptsBeforeImprovement") or []),
             "attemptsSinceLastBest": int(data.get("attemptsSinceLastBest", 0)),
@@ -126,6 +125,7 @@ class MazeOptimizationTracker:
             "knownDeadEndsUnion": [list(c) for c in (data.get("knownDeadEndsUnion") or [])][-200:],
             "totalDeadEndsEncountered": int(data.get("totalDeadEndsEncountered", 0)),
             "totalRepeatedMistakes": int(data.get("totalRepeatedMistakes", 0)),
+            "totalOscillationsDetected": int(data.get("totalOscillationsDetected", 0)),
             "totalAvoidedMistakes": int(data.get("totalAvoidedMistakes", 0)),
             "totalNewAreasExplored": int(data.get("totalNewAreasExplored", 0)),
         }
@@ -147,13 +147,18 @@ class MazeOptimizationTracker:
         uniqueCells = int(episode.get("uniqueCells", len(episode.get("visitedCells") or [])))
         deadEndsEncountered = int(episode.get("deadEndsEncountered", 0))
         repeatedMistakes = int(episode.get("repeatedMistakes", 0))
+        oscillationsDetected = int(episode.get("oscillationsDetected", 0))
         avoidedMistakes = int(episode.get("avoidedPreviousMistakes", 0))
 
         entry["totalAttempts"] += 1
         entry["attemptsSinceLastBest"] += 1
         entry["attemptScores"].append(trainingScore)
+        entry["attemptSteps"].append(steps)
+        entry["attemptRevisits"].append(revisits)
         if len(entry["attemptScores"]) > 50:
             entry["attemptScores"] = entry["attemptScores"][-50:]
+            entry["attemptSteps"] = entry["attemptSteps"][-50:]
+            entry["attemptRevisits"] = entry["attemptRevisits"][-50:]
 
         if actions:
             entry["recentTrajectories"].append(actions)
@@ -190,6 +195,7 @@ class MazeOptimizationTracker:
 
         entry["totalDeadEndsEncountered"] += deadEndsEncountered
         entry["totalRepeatedMistakes"] += repeatedMistakes
+        entry["totalOscillationsDetected"] += oscillationsDetected
         entry["totalAvoidedMistakes"] += avoidedMistakes
         entry["totalNewAreasExplored"] += newlyDiscoveredCells
 
@@ -277,6 +283,7 @@ class MazeOptimizationTracker:
             "deadEndsEncountered": deadEndsEncountered,
             "newlyDiscoveredDeadEnds": newlyDiscoveredDeadEnds,
             "repeatedMistakes": repeatedMistakes,
+            "oscillationsDetected": oscillationsDetected,
             "avoidedPreviousMistakes": avoidedMistakes,
             "reducedMistakes": reducedMistakes,
             "improvedScore": improvedScore,
@@ -340,6 +347,10 @@ class MazeOptimizationTracker:
             if entry["attemptsBeforeImprovement"]
             else 0.0
         )
+        attempts = max(1, entry["totalAttempts"])
+        avgSteps = float(np.mean(entry["attemptSteps"])) if entry["attemptSteps"] else float(entry["bestSteps"] or 0)
+        avgRevisits = float(np.mean(entry["attemptRevisits"])) if entry["attemptRevisits"] else 0.0
+        revisitRate = avgRevisits / max(1.0, avgSteps)
         return {
             "bestScore": entry["bestScore"],
             "bestTrainingScore": entry["bestTrainingScore"],
@@ -347,11 +358,13 @@ class MazeOptimizationTracker:
             "firstSolvedScore": entry["firstSolvedScore"],
             "bestTrajectory": list(entry["bestTrajectory"]),
             "bestSteps": entry["bestSteps"],
+            "averageSteps": round(avgSteps, 2),
             "bonesCollected": entry["bonesCollected"],
             "maxBonesCollected": entry["maxBonesCollected"],
             "totalAttempts": entry["totalAttempts"],
             "successfulAttempts": entry["successfulAttempts"],
             "failedAttempts": entry["failedAttempts"],
+            "mazeCompletionRate": round(float(entry["successfulAttempts"]) / float(attempts), 4),
             "scoreLimitFailures": entry["scoreLimitFailures"],
             "fiveBoneCompletions": entry["fiveBoneCompletions"],
             "distinctSuccessfulTrajectories": entry["distinctSuccessfulTrajectories"],
@@ -359,6 +372,9 @@ class MazeOptimizationTracker:
             "distinctRoutes": div["distinctTrajectories"],
             "totalDeadEndsEncountered": entry["totalDeadEndsEncountered"],
             "totalRepeatedMistakes": entry["totalRepeatedMistakes"],
+            "repeatedMoves": entry["totalRepeatedMistakes"],
+            "loopsDetected": entry["totalOscillationsDetected"],
+            "revisitRate": round(revisitRate, 4),
             "totalAvoidedMistakes": entry["totalAvoidedMistakes"],
             "totalNewAreasExplored": entry["totalNewAreasExplored"],
             "scoreImprovement": totalImp,
@@ -374,6 +390,14 @@ class MazeOptimizationTracker:
             return {
                 "trackedMazes": 0,
                 "totalAttempts": 0,
+                "attempts": 0,
+                "averageSteps": 0.0,
+                "bestScore": None,
+                "bonesCollected": 0,
+                "mazeCompletionRate": 0.0,
+                "repeatedMoves": 0,
+                "revisitRate": 0.0,
+                "loopsDetected": 0,
                 "distinctSuccessfulTrajectories": 0,
                 "distinctRoutes": 0,
                 "totalDeadEndsEncountered": 0,
@@ -386,11 +410,22 @@ class MazeOptimizationTracker:
         summaries = [self.getMazeSummary(k) for k in self.mazes]
         allWait = [x for s in summaries for x in s["attemptsBeforeImprovement"]]
         allImp = [s["scoreImprovement"] for s in summaries if s["firstSolvedScore"] is not None]
+        totalAttempts = sum(s["totalAttempts"] for s in summaries)
+        succAttempts = sum(s["successfulAttempts"] for s in summaries)
+        bestScores = [s["bestOfficialScore"] for s in summaries if s["bestOfficialScore"] is not None]
         return {
             "trackedMazes": len(summaries),
-            "totalAttempts": sum(s["totalAttempts"] for s in summaries),
-            "successfulAttempts": sum(s["successfulAttempts"] for s in summaries),
+            "totalAttempts": totalAttempts,
+            "attempts": totalAttempts,
+            "successfulAttempts": succAttempts,
             "failedAttempts": sum(s["failedAttempts"] for s in summaries),
+            "mazeCompletionRate": round(float(succAttempts) / float(max(1, totalAttempts)), 4),
+            "averageSteps": round(float(np.mean([s["averageSteps"] for s in summaries])), 2),
+            "bestScore": min(bestScores) if bestScores else None,
+            "bonesCollected": sum(s["maxBonesCollected"] for s in summaries),
+            "repeatedMoves": sum(s["totalRepeatedMistakes"] for s in summaries),
+            "revisitRate": round(float(np.mean([s["revisitRate"] for s in summaries])), 4),
+            "loopsDetected": sum(s["loopsDetected"] for s in summaries),
             "scoreLimitFailures": sum(s["scoreLimitFailures"] for s in summaries),
             "distinctSuccessfulTrajectories": sum(s["distinctSuccessfulTrajectories"] for s in summaries),
             "distinctRoutes": sum(s["distinctRoutes"] for s in summaries),
@@ -407,11 +442,7 @@ class MazeOptimizationTracker:
 
 
 class LearningProgressReporter:
-    """Generates short, simple, evidence-backed learning progress updates.
-
-    Never claims policy learning merely because an episode finished, and deduplicates
-    repeated messages so neither the terminal nor Godot UI is flooded.
-    """
+    """Generates short, simple, evidence-backed learning progress updates."""
 
     def __init__(self):
         self.events = []
@@ -460,10 +491,6 @@ class LearningProgressReporter:
         )
 
     def recordAttemptOutcome(self, attemptOutcome, totalBones=5):
-        """Evaluate one attempt outcome from MazeOptimizationTracker.recordAttempt().
-        Only emits messages when a genuine discovery, improvement, or score-limit failure occurred.
-        Never claims the neural network policy weights were updated until recordPolicyUpdate() runs.
-        """
         emitted = []
         mapName = attemptOutcome["mapName"]
         attemptNum = attemptOutcome["attemptNumber"]
@@ -574,7 +601,6 @@ class LearningProgressReporter:
         return emitted
 
     def recordPolicyUpdate(self, updateNumber, episodes, evalMetrics=None):
-        """Emit progress updates after a PPO policy update only when supported by evidence."""
         emitted = []
         failedEps = [ep for ep in episodes if ep.get("failed", False) or ep.get("scoreLimitExceeded", False)]
         scoreLimitEps = [ep for ep in episodes if ep.get("scoreLimitExceeded", False)]
@@ -679,6 +705,7 @@ class TrainingMetricsTracker:
         newAreas = [ep.get("newAreasExplored", 0) for ep in episodes]
         deadEnds = [ep.get("deadEndsEncountered", 0) for ep in episodes]
         mistakes = [ep.get("repeatedMistakes", 0) for ep in episodes]
+        oscillations = [ep.get("oscillationsDetected", 0) for ep in episodes]
         maxVisits = [ep.get("maxVisitCount", 1) for ep in episodes]
         scoreLimitFails = sum(1 for ep in episodes if ep.get("scoreLimitExceeded", False))
         rehearsalCount = (
@@ -705,9 +732,12 @@ class TrainingMetricsTracker:
             "rehearsalEpisodes": int(rehearsalCount),
             "scoreLimitFailures": int(scoreLimitFails),
             "winRate": float(np.mean(wins)) if wins else 0.0,
+            "mazeCompletionRate": float(np.mean(wins)) if wins else 0.0,
             "meanScore": float(np.mean(scores)) if scores else 0.0,
+            "bestScore": float(np.min(scores)) if scores else 0.0,
             "meanTrainingScore": float(np.mean(trainingScores)) if trainingScores else 0.0,
             "meanSteps": float(np.mean(lengths)) if lengths else 0.0,
+            "averageSteps": float(np.mean(lengths)) if lengths else 0.0,
             "meanEpisodeLength": float(np.mean(lengths)) if lengths else 0.0,
             "meanReward": float(np.mean(rewards)) if rewards else 0.0,
             "meanBonesCollected": float(np.mean(bones)) if bones else 0.0,
@@ -720,6 +750,8 @@ class TrainingMetricsTracker:
             "meanNewAreasExplored": float(np.mean(newAreas)) if newAreas else 0.0,
             "meanDeadEndsEncountered": float(np.mean(deadEnds)) if deadEnds else 0.0,
             "meanRepeatedMistakes": float(np.mean(mistakes)) if mistakes else 0.0,
+            "repeatedMoves": int(sum(mistakes)),
+            "loopsDetected": int(sum(oscillations)),
             "maxVisitCount": int(max(maxVisits)) if maxVisits else 0,
             "policyLoss": float(getattr(updateMetrics, "policyLoss", 0.0)),
             "valueLoss": float(getattr(updateMetrics, "valueLoss", 0.0)),
@@ -769,3 +801,4 @@ class TrainingMetricsTracker:
             f"rev {record['meanRevisits']:.1f} ({record['revisitRate']:.0%}) | uniq {record['meanUniqueSquares']:.1f} | "
             f"rew {record['meanReward']:.2f} | ent {record['entropy']:.3f}{evalPart} | ckpt: {ckptStr}"
         )
+

@@ -1,5 +1,11 @@
+"""DoobyScoo MazeEnvironment with rebuilt reward system, oscillation detection,
+revisit penalties, dead-end pruning, score-aware target locking, and active
+episodic navigation guidance under strict partial observability.
+"""
+from collections import deque
 import json
 from pathlib import Path
+import numpy as np
 from ..config import DEFAULT_CONFIG
 from .observation import (
     ACTION_MASK_OFFSET,
@@ -37,7 +43,7 @@ def loadMaze(path):
 
 
 class RewardConfig:
-    """RL training reward and training score rules.
+    """Rebuilt RL reward & training score specification.
 
     Official multiplayer score (Steps - 5 * Bones Collected) is completely
     separate and never modified by RewardConfig.
@@ -73,11 +79,11 @@ class RewardConfig:
 
     def revisitPenaltyFor(self, priorVisits):
         """Return training penalty when entering a cell with `priorVisits` prior visits.
-        - 1st visit (priorVisits == 0): 0
-        - 2nd visit (priorVisits == 1): revisitPenalty (-2)
-        - 3rd visit (priorVisits == 2): revisitPenalty + repeatedRevisitPenalty (-4)
-        - 4th visit (priorVisits == 3): revisitPenalty + 2 * repeatedRevisitPenalty (-6)
-        - 5th+ visit (priorVisits >= 4): capped at maxRevisitPenalty (-8)
+        - 1st visit (priorVisits == 0): 0.0 (only normal movePenalty -1.0 applies)
+        - 2nd visit (priorVisits == 1): revisitPenalty (-2.5)
+        - 3rd visit (priorVisits == 2): revisitPenalty + repeatedRevisitPenalty (-5.0)
+        - 4th visit (priorVisits == 3): revisitPenalty + 2 * repeatedRevisitPenalty (-7.5)
+        - 5th+ visit (priorVisits >= 4): capped at maxRevisitPenalty (-10.0)
         """
         if priorVisits <= 0:
             return float(self.firstVisitPenalty)
@@ -85,21 +91,17 @@ class RewardConfig:
         return max(float(self.maxRevisitPenalty), penalty)
 
     def revisitPenaltyForVisit(self, visitNumber):
-        """Return training penalty by 1-based visit number (1 -> 0, 2 -> -2, 3 -> -4, 4 -> -6, 5+ -> -8)."""
+        """Return training penalty by 1-based visit number."""
         return self.revisitPenaltyFor(max(0, int(visitNumber) - 1))
 
     def boneScoreReductionFor(self, boneNumber, completedAllFive=False):
-        """Return training score reduction for collecting the `boneNumber`-th Bone (1..5).
-        Bones 1..4 each provide -10; the 5th Bone provides -20 (total -60 when all 5 are collected).
-        """
+        """Return training score reduction for collecting the `boneNumber`-th Bone (1..5)."""
         if int(boneNumber) >= MAX_BONES or bool(completedAllFive):
             return float(self.fifthBoneScoreReduction)
         return float(self.boneScoreReduction)
 
     def boneRewardFor(self, boneNumber, completedAllFive=False):
-        """Return positive RL reward for collecting the `boneNumber`-th Bone (1..5).
-        The 5th Bone gives double the reward of an ordinary Bone (+20 vs +10, total +60).
-        """
+        """Return positive RL reward for collecting the `boneNumber`-th Bone (1..5)."""
         if int(boneNumber) >= MAX_BONES or bool(completedAllFive):
             return float(self.fifthBoneReward)
         return float(self.boneReward)
@@ -171,6 +173,7 @@ class MazeEnvironment:
         self.orderedBones = sorted(self.bones, key=lambda pos: (pos[1], pos[0]))
         self.maxSteps = int(maxSteps)
         self.rewardConfig = RewardConfig.coerce(rewardConfig)
+        self.navConfig = dict(DEFAULT_CONFIG["navigation"])
         self.enforceScoreLimit = bool(enforceScoreLimit)
         self.encoder = ObservationEncoder(normalize=normalizeObservation)
         self.observationSize = OBSERVATION_SIZE
@@ -253,7 +256,9 @@ class MazeEnvironment:
         self.scoreLimitExceeded = False
         self.failed = False
         self.visitCounts = {self.position: 1}
+        self.lastVisitedStep = {self.position: 0}
         self.pitVisitCounts = {}
+        self.discoveredPitTargets = {}
         self.edgeCounts = {}
         self.exploredDirections = {self.position: set()}
         self.discoveredCells = {self.position}
@@ -265,13 +270,18 @@ class MazeEnvironment:
         self.deadEndEdges = set()
         self.loopPaths = []
         self.loopEdges = set()
+        self.suppressedTargets = set()
         self.revisits = 0
         self.wallBumps = 0
         self.deadEndsEncountered = 0
         self.deadEndReentries = 0
         self.repeatedSequencesCount = 0
         self.repeatedCorridorEntries = 0
+        self.oscillationsDetected = 0
+        self.immediateReversalsCount = 0
+        self.oscillationActive = False
         self.noProgressStreak = 0
+        self.targetStallSteps = 0
         self.unsuccessfulObjectiveAttempts = 0
         self.avoidedPreviousMistakes = 0
         self.lastStepWasMistake = False
@@ -302,45 +312,106 @@ class MazeEnvironment:
         px, py = self.position if fromPos is None else fromPos
         return min(self.ends, key=lambda pos: (abs(pos[0] - px) + abs(pos[1] - py), pos[1], pos[0]))
 
-    def _updateActiveTarget(self, initial=False):
-        """Maintain a stable target objective with hysteresis so the Dog does not
-        repeatedly switch between targets without a reason."""
-        pos = self.position
+    def _selectWorthwhileBone(self, pos):
+        """Score-aware Bone evaluation under partial observability.
+
+        Collecting a Bone reduces the official score by 5 points.
+        Therefore, a Bone is worth pursuing when the estimated extra detour cost
+            detour(B) = dist(pos, B) + dist(B, End) - dist(pos, End)
+        is at most `maxDetourStepsPerBone` (default 7 steps), OR when the Bone
+        is immediately nearby (Manhattan distance <= 4).
+        Bones that have stalled progress repeatedly (`suppressedTargets`) or
+        lie inside known dead ends without direct access are deprioritized.
+        """
         if not self.remainingBones:
-            self.currentTarget = self._nearestEnd(pos)
+            return None
+        nearestEnd = self._nearestEnd(pos)
+        distToEnd = self._manhattan(pos, nearestEnd)
+        maxDetour = int(self.navConfig.get("maxDetourStepsPerBone", 7))
+
+        candidates = []
+        for bonePos in self.remainingBones:
+            if bonePos in self.suppressedTargets:
+                continue
+            dBone = self._manhattan(pos, bonePos)
+            dBoneToEnd = self._manhattan(bonePos, nearestEnd)
+            detour = (dBone + dBoneToEnd) - distToEnd
+            if dBone <= 4 or detour <= maxDetour:
+                # Net score utility: lower effective cost is better
+                effectiveCost = dBone + 0.65 * max(0, detour)
+                candidates.append((effectiveCost, dBone, bonePos[1], bonePos[0], bonePos))
+
+        if candidates:
+            candidates.sort()
+            return candidates[0][-1]
+
+        # If all remaining Bones require huge detours, check if any unsuppressed Bone is very close
+        unsuppressed = [b for b in self.remainingBones if b not in self.suppressedTargets]
+        if unsuppressed:
+            closest = min(unsuppressed, key=lambda b: (self._manhattan(pos, b), b[1], b[0]))
+            if self._manhattan(pos, closest) <= 3:
+                return closest
+        return None
+
+    def _updateActiveTarget(self, initial=False):
+        """Maintain a persistent score-aware objective with hysteresis and stall recovery."""
+        pos = self.position
+        nearestEnd = self._nearestEnd(pos)
+
+        if not self.remainingBones:
+            self.currentTarget = nearestEnd
             self.currentTargetType = "end"
-            self.minDistToCurrentTarget = self._manhattan(pos, self.currentTarget)
+            self.minDistToCurrentTarget = self._manhattan(pos, nearestEnd)
+            self.targetStallSteps = 0
             return
 
-        nearestBone = min(
-            self.remainingBones,
-            key=lambda b: (self._manhattan(pos, b), b[1], b[0]),
-        )
-        nearestDist = self._manhattan(pos, nearestBone)
+        # If currently locked onto a Bone that has stalled for too many steps, suppress it
+        maxStall = int(self.navConfig.get("maxStallStepsOnTarget", 6))
+        if (
+            not initial
+            and self.currentTarget is not None
+            and self.currentTargetType == "bone"
+            and self.targetStallSteps >= maxStall
+        ):
+            self.suppressedTargets.add(self.currentTarget)
+            self.unsuccessfulObjectiveAttempts += 1
+            self.currentTarget = None
+            self.targetStallSteps = 0
 
+        bestBone = self._selectWorthwhileBone(pos)
+        if bestBone is None:
+            self.currentTarget = nearestEnd
+            self.currentTargetType = "end"
+            self.minDistToCurrentTarget = self._manhattan(pos, nearestEnd)
+            return
+
+        bestDist = self._manhattan(pos, bestBone)
         if (
             initial
             or self.currentTarget is None
             or self.currentTargetType != "bone"
             or self.currentTarget not in self.remainingBones
+            or self.currentTarget in self.suppressedTargets
         ):
-            self.currentTarget = nearestBone
+            self.currentTarget = bestBone
             self.currentTargetType = "bone"
-            self.minDistToCurrentTarget = nearestDist
+            self.minDistToCurrentTarget = bestDist
+            self.targetStallSteps = 0
             return
 
         currentDist = self._manhattan(pos, self.currentTarget)
-        # Switch to a different uncollected Bone only if it is substantially closer
-        # (hysteresis margin >= 2 steps) or we hit a dead end pursuing the old one.
-        if nearestBone != self.currentTarget and (
-            nearestDist + 2 < currentDist or self.lastStepFoundDeadEnd
+        hysteresis = int(self.navConfig.get("hysteresisMargin", 2))
+        if bestBone != self.currentTarget and (
+            bestDist + hysteresis < currentDist or self.lastStepFoundDeadEnd
         ):
-            self.currentTarget = nearestBone
+            self.currentTarget = bestBone
             self.currentTargetType = "bone"
-            self.minDistToCurrentTarget = nearestDist
+            self.minDistToCurrentTarget = bestDist
+            self.targetStallSteps = 0
         else:
             if self.minDistToCurrentTarget is None or currentDist < self.minDistToCurrentTarget:
                 self.minDistToCurrentTarget = currentDist
+                self.targetStallSteps = 0
 
     def _recordLocalDiscovery(self, pos):
         """Update discovered cells, walls, connections, and adjacent pits from `pos`."""
@@ -359,17 +430,12 @@ class MazeEnvironment:
 
     def _updateDiscoveredTopology(self):
         """Identify known junctions and dead ends using ONLY visited cells and their
-        observed open doorways. Never inspects unvisited corridors or the hidden maze."""
+        observed open doorways. Never inspects unvisited corridors or hidden maze structure."""
         for v in self.visitCounts:
             openNeighbors = [self.neighborAt(v, a) for a in range(4) if self.neighborAt(v, a) is not None]
             if len(openNeighbors) >= 3:
                 self.knownJunctions.add(v)
 
-        # Iterative pruning on visited cells:
-        # A visited cell v (not an End, not holding an uncollected Bone) is a dead end if:
-        #   - v != start and at most 1 of its open neighbors is not already in knownDeadEnds
-        #   - OR v == start and len(openNeighbors) == 1 and self.position != start (so start itself
-        #     is a degree-1 cap, without propagating dead-end status forward out of start).
         deadEnds = set()
         startPos = self.starts[0]
         changed = True
@@ -381,22 +447,21 @@ class MazeEnvironment:
                 if v == startPos:
                     continue
                 openNeighbors = [self.neighborAt(v, a) for a in range(4) if self.neighborAt(v, a) is not None]
-                if v in self.pits and self.pits[v] in self.visitCounts:
-                    openNeighbors.append(self.pits[v])
+                if v in self.discoveredPitTargets and self.discoveredPitTargets[v] in self.visitCounts:
+                    openNeighbors.append(self.discoveredPitTargets[v])
                 activeExits = [nb for nb in openNeighbors if nb not in deadEnds]
                 if len(activeExits) <= 1:
                     deadEnds.add(v)
                     changed = True
 
-        # If Start itself has only 1 open doorway and the Dog has already stepped out of Start,
-        # mark Start as a dead-end destination so the Dog does not pointlessly re-enter Start.
         if (
             startPos not in self.ends
             and startPos not in self.remainingBones
             and self.position != startPos
         ):
             startOpen = [self.neighborAt(startPos, a) for a in range(4) if self.neighborAt(startPos, a) is not None]
-            if len(startOpen) <= 1:
+            activeStartExits = [nb for nb in startOpen if nb not in deadEnds]
+            if len(activeStartExits) <= 1:
                 deadEnds.add(startPos)
 
         self.knownDeadEnds = deadEnds
@@ -404,6 +469,181 @@ class MazeEnvironment:
             nb = self.neighborAt(pos, act)
             if nb is not None and nb in self.knownDeadEnds and nb not in self.remainingBones and nb not in self.ends:
                 self.deadEndEdges.add((int(pos[0]), int(pos[1]), int(act)))
+
+    def _discoveredGraphDistanceToFrontier(self, startCell):
+        """Compute shortest path distance within the DISCOVERED graph from `startCell`
+        to the nearest unvisited discovered cell (or visible Bone/End).
+
+        Uses ONLY cells in `self.visitCounts` and their observed open neighbors in
+        `self.discoveredCells`. Never accesses any hidden or undiscovered cell.
+        Returns (distance, targetFrontierCell) or (None, None) if no frontier is reachable
+        through known open doorways.
+        """
+        if startCell in self.ends or startCell in self.remainingBones:
+            return 0, startCell
+        if self.visitCountAt(startCell) == 0 and startCell not in self.knownDeadEnds:
+            return 0, startCell
+
+        queue = deque([(startCell, 0)])
+        seen = {startCell}
+        while queue:
+            curr, dist = queue.popleft()
+            if curr not in self.visitCounts:
+                # Reached an unvisited frontier cell observed from a visited neighbor
+                if curr not in self.knownDeadEnds:
+                    return dist, curr
+                continue
+            for act in range(4):
+                nb = self.neighborAt(curr, act)
+                if nb is None or nb in seen:
+                    continue
+                if nb in self.knownDeadEnds and nb not in self.remainingBones and nb not in self.ends:
+                    continue
+                seen.add(nb)
+                if nb in self.ends or nb in self.remainingBones or self.visitCountAt(nb) == 0:
+                    return dist + 1, nb
+                queue.append((nb, dist + 1))
+        return None, None
+
+    def computeNavigationActionBias(self, includeCrossAttemptMemory=True):
+        """Compute an active action-selection logit bias vector [4] using ONLY
+        the Dog's local observation and episodic memory.
+
+        This ensures the action-selection system actively prevents oscillation loops,
+        escapes dead ends along discovered paths, prefers unexplored junction exits,
+        and navigates toward the locked score-aware objective without ever seeing the
+        hidden maze.
+        """
+        openActions = self.availableActionIndices()
+        if len(openActions) <= 1:
+            return np.zeros(4, dtype=np.float32)
+
+        pos = (int(self.position[0]), int(self.position[1]))
+        navCfg = self.navConfig
+        pm = self.priorMazeMemory if includeCrossAttemptMemory else {}
+        priorDeadEdges = (pm.get("cumulativeDeadEndEdges", set()) if pm else set()) | self.deadEndEdges
+        priorLoopEdges = (pm.get("historicalLoopEdges", set()) if pm else set()) | self.loopEdges
+        priorEdges = pm.get("cumulativeTraversedEdges", set()) if pm else set()
+
+        bias = np.zeros(4, dtype=np.float32)
+        activeTarget = self.currentTarget if self.currentTarget is not None else self._nearestEnd(pos)
+        currTargetDist = self._manhattan(pos, activeTarget)
+        nearestEnd = self._nearestEnd(pos)
+        currEndDist = self._manhattan(pos, nearestEnd)
+
+        deadActions = []
+        viableActions = []
+        for act in openActions:
+            target = self.neighbor(act)
+            if target is None:
+                continue
+            edgeTuple = (pos[0], pos[1], int(act))
+            isDead = (
+                (target in self.knownDeadEnds or edgeTuple in priorDeadEdges)
+                and (target not in self.remainingBones)
+                and (target not in self.ends)
+            )
+            if isDead:
+                deadActions.append(act)
+            else:
+                viableActions.append(act)
+
+        # 1. Immediate adjacent End or Bone override
+        # Prefer collecting an adjacent dead-end/pocket Bone before continuing down the main corridor
+        hasAdjacentPocketBone = any(
+            self.neighbor(a) in self.remainingBones
+            and sum(1 for d in range(4) if self.neighborAt(self.neighbor(a), d) is not None) <= 1
+            for a in openActions
+            if self.neighbor(a) is not None
+        )
+        for act in openActions:
+            target = self.neighbor(act)
+            if target is None:
+                continue
+            if target in self.ends:
+                # If no bones adjacent or remaining, End is highest priority
+                bias[act] += 18.0 if not self.remainingBones else 12.0
+            elif target in self.remainingBones:
+                isPocketBone = sum(1 for d in range(4) if self.neighborAt(target, d) is not None) <= 1
+                bias[act] += 18.0 if (isPocketBone and hasAdjacentPocketBone) else 15.0
+
+        # 2. Dead-end suppression when at least one non-dead-end exit exists
+        if deadActions and viableActions:
+            for act in deadActions:
+                bias[act] -= float(navCfg.get("deadEndAvoidanceBias", 7.5))
+
+        candidatePool = viableActions if viableActions else openActions
+
+        # 3. Oscillation shield & recent-reversal suppression
+        prevPos = tuple(self.positionHistory[-2]) if len(self.positionHistory) >= 2 else None
+        pos3Ago = tuple(self.positionHistory[-3]) if len(self.positionHistory) >= 3 else None
+
+        for act in candidatePool:
+            target = self.neighbor(act)
+            if target is None:
+                continue
+            edgeTuple = (pos[0], pos[1], int(act))
+            edgeVisits = self.edgeCounts.get((pos, act), 0)
+            cellVisits = self.visitCountAt(target)
+
+            # Escalating penalty for already-visited cells and repeated directed doorways
+            if cellVisits > 0:
+                bias[act] -= float(navCfg.get("revisitAvoidanceScale", 2.4)) * min(cellVisits, 4)
+            if edgeVisits > 0:
+                bias[act] -= float(navCfg.get("edgeRepeatAvoidanceScale", 2.6)) * min(edgeVisits, 4)
+
+            # Strong suppression against immediate back-step (pos -> prevPos) when other viable exits exist,
+            # UNLESS we just collected a Bone at `pos` (escaping a 1-step Bone pocket)
+            if prevPos is not None and target == prevPos and len(candidatePool) > 1 and not self.lastBoneCollected:
+                bias[act] -= 4.2
+                # If stepping to prevPos would complete an A -> B -> A -> B oscillation, block it strongly
+                if pos3Ago is not None and pos == pos3Ago:
+                    bias[act] -= float(navCfg.get("oscillationShieldBias", 9.0))
+
+            # Suppress known loop edges
+            if edgeTuple in priorLoopEdges and cellVisits > 0 and len(candidatePool) > 1:
+                bias[act] -= 4.5
+
+            # Unexplored doorway & cell bonus + objective alignment
+            if cellVisits == 0 and edgeVisits == 0:
+                bias[act] += float(navCfg.get("unexploredFrontierBonus", 2.2))
+                if priorEdges and edgeTuple not in priorEdges:
+                    bias[act] += 0.65
+
+            # Resolve known pit destination if already discovered in this episode
+            effectivePos = self.discoveredPitTargets.get(target, target)
+            nextTargetDist = self._manhattan(effectivePos, activeTarget)
+            nextEndDist = self._manhattan(effectivePos, nearestEnd)
+
+            pullScale = float(navCfg.get("objectivePullScale", 3.2))
+            if nextTargetDist < currTargetDist:
+                # Moving closer to locked objective; scale down if cell is already heavily visited
+                visitDamp = 1.0 / (1.0 + 0.85 * cellVisits)
+                bias[act] += pullScale * visitDamp
+            elif nextTargetDist > currTargetDist and cellVisits > 0:
+                bias[act] -= 1.25
+
+            if self.currentTargetType == "end" and nextEndDist < currEndDist and cellVisits == 0:
+                bias[act] += 0.85
+
+        # 4. Discovered-frontier routing when all immediate neighbors have already been visited
+        if all(self.visitCountAt(self.neighbor(a)) > 0 for a in candidatePool):
+            frontierDistances = {}
+            for act in candidatePool:
+                target = self.neighbor(act)
+                if target is not None:
+                    fDist, _ = self._discoveredGraphDistanceToFrontier(target)
+                    if fDist is not None:
+                        frontierDistances[act] = fDist
+            if frontierDistances:
+                minFDist = min(frontierDistances.values())
+                for act, fDist in frontierDistances.items():
+                    if fDist == minFDist:
+                        bias[act] += 3.8
+                    else:
+                        bias[act] -= min(3.0, 0.75 * (fDist - minFDist))
+
+        return bias
 
     @property
     def visited(self):
@@ -531,6 +771,8 @@ class MazeEnvironment:
             "deadEndReentries": int(self.deadEndReentries),
             "repeatedSequences": int(self.repeatedSequencesCount),
             "repeatedCorridorEntries": int(self.repeatedCorridorEntries),
+            "oscillationsDetected": int(self.oscillationsDetected),
+            "immediateReversals": int(self.immediateReversalsCount),
             "wallBumps": int(self.wallBumps),
             "noProgressStreak": int(self.noProgressStreak),
             "unsuccessfulObjectiveAttempts": int(self.unsuccessfulObjectiveAttempts),
@@ -589,7 +831,7 @@ class MazeEnvironment:
         return len(self.bones) - len(self.remainingBones)
 
     def currentScore(self):
-        """Official multiplayer score: Steps - 5 * Bones Collected."""
+        """Official score: Steps - 5 * Bones Collected."""
         return self.steps - 5 * self.bonesCollected()
 
     def currentTrainingScore(self):
@@ -621,6 +863,7 @@ class MazeEnvironment:
         teleported = False
         pitEntered = None
         if moved and self.position in self.pits:
+            firstPit = self.position
             pitEntered = list(self.position)
             self.discoveredPits.add(self.position)
             seenPits = set()
@@ -630,22 +873,29 @@ class MazeEnvironment:
                 self.pitVisitCounts[self.position] = self.pitVisitCounts.get(self.position, 0) + 1
                 self.position = self.pits[self.position]
                 teleported = True
+            self.discoveredPitTargets[firstPit] = self.position
+
+        openFromPrev = [a for a in range(4) if self.neighborAt(previousPosition, a) is not None]
+        nonDeadFromPrev = [
+            a
+            for a in openFromPrev
+            if self.neighborAt(previousPosition, a) not in priorKnownDeadEnds
+            and (int(previousPosition[0]), int(previousPosition[1]), int(a)) not in priorDeadEndEdges
+        ]
 
         # Check if the Dog avoided a known dead-end or loop edge at `previousPosition`
         avoidedMistake = False
-        if moved:
-            openFromPrev = [a for a in range(4) if self.neighborAt(previousPosition, a) is not None]
-            if len(openFromPrev) >= 2:
-                badChoices = {
-                    a
-                    for a in openFromPrev
-                    if (int(previousPosition[0]), int(previousPosition[1]), int(a)) in priorDeadEndEdges
-                    or (int(previousPosition[0]), int(previousPosition[1]), int(a)) in priorLoopEdges
-                    or (self.neighborAt(previousPosition, a) in priorKnownDeadEnds)
-                }
-                if badChoices and actionIndex not in badChoices and self.position not in priorKnownDeadEnds:
-                    avoidedMistake = True
-                    self.avoidedPreviousMistakes += 1
+        if moved and len(openFromPrev) >= 2:
+            badChoices = {
+                a
+                for a in openFromPrev
+                if (int(previousPosition[0]), int(previousPosition[1]), int(a)) in priorDeadEndEdges
+                or (int(previousPosition[0]), int(previousPosition[1]), int(a)) in priorLoopEdges
+                or (self.neighborAt(previousPosition, a) in priorKnownDeadEnds)
+            }
+            if badChoices and actionIndex not in badChoices and self.position not in priorKnownDeadEnds:
+                avoidedMistake = True
+                self.avoidedPreviousMistakes += 1
         self.lastStepAvoidedMistake = avoidedMistake
 
         rc = self.rewardConfig
@@ -672,8 +922,10 @@ class MazeEnvironment:
             })
 
         priorVisits = 0
+        lastSeenAtStep = None
         if moved:
             priorVisits = self.visitCounts.get(self.position, 0)
+            lastSeenAtStep = self.lastVisitedStep.get(self.position, None)
             self.visitCounts[self.position] = priorVisits + 1
             if priorVisits > 0:
                 self.revisits += 1
@@ -684,6 +936,8 @@ class MazeEnvironment:
         visitNumber = self.visitCounts.get(self.position, 1)
 
         self.steps += 1
+        if moved:
+            self.lastVisitedStep[self.position] = self.steps
         self.actionHistory.append(actionIndex)
         self.positionHistory.append([int(self.position[0]), int(self.position[1])])
         self.lastAction = actionIndex
@@ -703,7 +957,7 @@ class MazeEnvironment:
             and (self.position not in self.ends)
             and (
                 self.position in priorKnownDeadEnds
-                or (int(previousPosition[0]), int(previousPosition[1]), int(actionIndex)) in self.priorMazeMemory.get("cumulativeDeadEndEdges", set())
+                or (int(previousPosition[0]), int(previousPosition[1]), int(actionIndex)) in priorDeadEndEdges
             )
         )
         newlyFoundDeadEnd = bool(
@@ -718,9 +972,19 @@ class MazeEnvironment:
             self.deadEndReentries += 1
         self.lastStepFoundDeadEnd = newlyFoundDeadEnd
 
-        # Detect repeated movement sequences (oscillation A -> B -> A -> B) and corridor loops
-        repeatedSequence = False
-        if (
+        # Detect immediate reversal (A -> B -> A) when B was not a 1-exit dead end
+        immediateReversal = bool(
+            moved
+            and not bone
+            and len(self.positionHistory) >= 3
+            and self.positionHistory[-1] == self.positionHistory[-3]
+            and len(nonDeadFromPrev) >= 2
+        )
+        if immediateReversal:
+            self.immediateReversalsCount += 1
+
+        # Detect 2-block oscillation (A -> B -> A -> B), 3-block loop (A -> B -> C -> A), and repeated sequences
+        twoBlockOscillation = bool(
             moved
             and not bone
             and not newCell
@@ -728,29 +992,42 @@ class MazeEnvironment:
             and self.positionHistory[-1] == self.positionHistory[-3]
             and self.positionHistory[-2] == self.positionHistory[-4]
             and len(openFromPrev) >= 2
-        ):
-            repeatedSequence = True
+        )
+        threeBlockLoop = bool(
+            moved
+            and not bone
+            and not newCell
+            and len(self.positionHistory) >= 5
+            and self.positionHistory[-1] == self.positionHistory[-4]
+            and self.positionHistory[-2] == self.positionHistory[-5]
+            and len(openFromPrev) >= 2
+        )
+        repeatedSequence = bool(twoBlockOscillation or threeBlockLoop)
+        self.oscillationActive = repeatedSequence
+        if repeatedSequence:
             self.repeatedSequencesCount += 1
+            self.oscillationsDetected += 1
             self.loopEdges.add((int(previousPosition[0]), int(previousPosition[1]), int(actionIndex)))
             self.loopPaths.append({
                 "step": self.steps,
                 "from": list(previousPosition),
                 "to": list(self.position),
-                "type": "oscillation",
+                "type": "two_block_oscillation" if twoBlockOscillation else "three_block_loop",
             })
 
         repeatedCorridor = False
-        if moved and not bone and priorEdgeCount >= 2:
-            repeatedCorridor = True
-            self.repeatedCorridorEntries += 1
-            self.loopEdges.add((int(previousPosition[0]), int(previousPosition[1]), int(actionIndex)))
-            if len(self.loopPaths) < 50:
-                self.loopPaths.append({
-                    "step": self.steps,
-                    "from": list(previousPosition),
-                    "to": list(self.position),
-                    "type": "repeated_corridor",
-                })
+        if moved and not bone and priorEdgeCount >= 1:
+            if priorEdgeCount >= 2:
+                repeatedCorridor = True
+                self.repeatedCorridorEntries += 1
+                self.loopEdges.add((int(previousPosition[0]), int(previousPosition[1]), int(actionIndex)))
+                if len(self.loopPaths) < 50:
+                    self.loopPaths.append({
+                        "step": self.steps,
+                        "from": list(previousPosition),
+                        "to": list(self.position),
+                        "type": "repeated_corridor",
+                    })
 
         # Objective progress calculation
         reachedEnd = self.position in self.ends
@@ -758,14 +1035,21 @@ class MazeEnvironment:
         if bone or reachedEnd:
             self.lastObjectiveProgress = 1.0
             self.noProgressStreak = 0
+            self.targetStallSteps = 0
         elif not moved:
             self.lastObjectiveProgress = -1.0
             self.noProgressStreak += 1
+            self.targetStallSteps += 1
         elif distAfter < distBefore:
             self.lastObjectiveProgress = 1.0
             self.noProgressStreak = 0
+            if self.minDistToCurrentTarget is None or distAfter < self.minDistToCurrentTarget:
+                self.targetStallSteps = 0
+            else:
+                self.targetStallSteps += 1
         elif distAfter > distBefore:
             self.lastObjectiveProgress = -1.0
+            self.targetStallSteps += 1
             if not newCell:
                 self.noProgressStreak += 1
                 if self.minDistToCurrentTarget is not None and distBefore <= 2 and distAfter >= self.minDistToCurrentTarget + 2:
@@ -774,10 +1058,13 @@ class MazeEnvironment:
                 self.noProgressStreak = 0
         else:
             self.lastObjectiveProgress = 0.0
+            self.targetStallSteps += 1
             if not newCell:
                 self.noProgressStreak += 1
 
-        self.lastStepWasMistake = bool(enteredKnownDeadEnd or repeatedSequence or repeatedCorridor or (not moved))
+        self.lastStepWasMistake = bool(
+            enteredKnownDeadEnd or repeatedSequence or repeatedCorridor or immediateReversal or (not moved)
+        )
         self._updateActiveTarget(initial=False)
 
         self.trainingScore = int(round(self.steps * rc.stepScoreCost + self.totalBoneScoreReduction))
@@ -792,17 +1079,38 @@ class MazeEnvironment:
         self.failed = failed
         self.done = won or scoreLimitExceeded or timeout
 
-        breakdown = {"move": rc.movePenalty}
+        # --- Rebuilt Score-Aligned Reward Calculation ---
+        breakdown = {"move": float(rc.movePenalty)}
         if not moved:
-            breakdown["wall"] = rc.wallPenalty
-        if newCell:
-            breakdown["novelty"] = rc.noveltyReward
+            breakdown["wall"] = float(rc.wallPenalty)
+        if newCell and getattr(rc, "noveltyReward", 0.0) != 0.0:
+            breakdown["novelty"] = float(rc.noveltyReward)
         if revisit:
-            breakdown["revisit"] = rc.revisitPenaltyFor(priorVisits)
+            breakdown["revisit"] = float(rc.revisitPenaltyFor(priorVisits))
+            if lastSeenAtStep is not None and (self.steps - lastSeenAtStep) <= 4 and not bone and not won:
+                recentPen = float(getattr(rc, "recentRevisitPenalty", 0.0))
+                if recentPen != 0.0:
+                    breakdown["recentRevisit"] = recentPen
+            if priorEdgeCount >= 1 and not bone and not won:
+                edgePen = float(getattr(rc, "edgeRepeatPenalty", 0.0)) * min(priorEdgeCount, 3)
+                if edgePen != 0.0:
+                    breakdown["edgeRepeat"] = edgePen
+            if immediateReversal and not repeatedSequence and getattr(rc, "reversePenalty", 0.0) != 0.0:
+                breakdown["reverse"] = float(rc.reversePenalty)
+            if repeatedSequence and getattr(rc, "oscillationPenalty", 0.0) != 0.0:
+                breakdown["oscillation"] = float(rc.oscillationPenalty)
             if enteredKnownDeadEnd and getattr(rc, "deadEndPenalty", 0.0) != 0.0:
                 breakdown["deadEnd"] = float(rc.deadEndPenalty)
-            if (repeatedSequence or repeatedCorridor) and getattr(rc, "loopPenalty", 0.0) != 0.0:
+            if repeatedCorridor and getattr(rc, "loopPenalty", 0.0) != 0.0:
                 breakdown["mistake"] = float(rc.loopPenalty)
+
+        # Objective progress shaping (only when moving without collecting bone/end on this step)
+        if moved and not bone and not won:
+            if distAfter < distBefore and not revisit and getattr(rc, "progressReward", 0.0) != 0.0:
+                breakdown["progress"] = float(rc.progressReward)
+            elif distAfter > distBefore and revisit and len(nonDeadFromPrev) >= 2 and getattr(rc, "regressPenalty", 0.0) != 0.0:
+                breakdown["regress"] = float(rc.regressPenalty)
+
         if bone:
             breakdown["bone"] = float(rc.boneReward)
             if completedAllFive:
@@ -810,16 +1118,22 @@ class MazeEnvironment:
                 if extraFifth != 0.0:
                     breakdown["allBones"] = extraFifth
         if won:
-            breakdown["end"] = rc.endReward
+            breakdown["end"] = float(rc.endReward)
+            effScale = float(getattr(rc, "efficiencyBonusScale", 0.0))
+            if effScale > 0.0:
+                # Higher efficiency bonus for lower official score
+                effFactor = max(0.0, min(1.5, (60.0 - float(officialScore)) / 60.0))
+                breakdown["efficiency"] = round(effScale * effFactor, 4)
         elif scoreLimitExceeded:
-            breakdown["scoreLimit"] = rc.scoreLimitPenalty
-            breakdown["failure"] = rc.failurePenalty
+            breakdown["scoreLimit"] = float(rc.scoreLimitPenalty)
+            breakdown["failure"] = float(rc.failurePenalty)
         elif timeout:
-            breakdown["stepLimit"] = rc.stepLimitPenalty
-            breakdown["failure"] = rc.failurePenalty
+            breakdown["stepLimit"] = float(rc.stepLimitPenalty)
+            breakdown["failure"] = float(rc.failurePenalty)
+
         reward = float(sum(breakdown.values()))
 
-        # Official-score-aligned signal (negated official score delta) kept for reporting only.
+        # Official-score-aligned signal (negated official score delta: -1 per step, +5 per bone)
         rawReward = -1.0 + (5.0 if bone else 0.0)
         self.rawCumulativeReward += rawReward
         self.cumulativeReward += reward
@@ -874,8 +1188,12 @@ class MazeEnvironment:
             "isDeadEnd": navInfo["isDeadEnd"],
             "isCorridor": navInfo["isCorridor"],
             "isJunction": navInfo["isJunction"],
+            "enteredDeadEnd": enteredKnownDeadEnd or newlyFoundDeadEnd,
             "deadEndsEncountered": self.deadEndsEncountered,
             "deadEndReentries": self.deadEndReentries,
+            "oscillationDetected": repeatedSequence,
+            "oscillationsDetected": self.oscillationsDetected,
+            "immediateReversals": self.immediateReversalsCount,
             "repeatedMistakes": self.totalMistakesCount(),
             "avoidedPreviousMistakes": self.avoidedPreviousMistakes,
             "objectiveProgress": self.lastObjectiveProgress,
@@ -921,6 +1239,7 @@ class MazeEnvironment:
             "revisitPercentage": round(self.revisitPercentage(), 2),
             "deadEndsEncountered": self.deadEndsEncountered,
             "deadEndReentries": self.deadEndReentries,
+            "oscillationsDetected": self.oscillationsDetected,
             "repeatedMistakes": self.totalMistakesCount(),
             "avoidedPreviousMistakes": self.avoidedPreviousMistakes,
             "navigation": navInfo,
@@ -932,3 +1251,4 @@ class MazeEnvironment:
             "observation": [round(float(x), 4) for x in self.observe()],
             "grid": self.grid,
         }
+

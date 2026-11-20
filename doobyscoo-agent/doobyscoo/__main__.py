@@ -5,7 +5,7 @@ import urllib.request
 from pathlib import Path
 from .agent import RecurrentPolicy
 from .communication.server import serve
-from .config import defaultConfig, loadConfig, saveConfig
+from .config import defaultConfig, loadConfig
 from .evaluation import compareModels, evaluate, runKnowledgeTransferEvaluation
 from .storage.checkpoint import getCheckpointMetadata, loadCheckpointFull
 from .training import discoverMaps, train
@@ -154,3 +154,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

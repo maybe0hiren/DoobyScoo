@@ -1,0 +1,31 @@
+Start fresh training
+
+./.venv/bin/python -m doobyscoo train \
+  --fresh \
+  --maps maps/train \
+  --val-maps maps/validation \
+  --checkpoint models/dog.pt \
+  --updates 40 \
+  --episodes-per-update 16 \
+  --seed 42
+
+Continue training
+
+./.venv/bin/python -m doobyscoo train \
+  --resume \
+  --maps maps/train \
+  --val-maps maps/validation \
+  --checkpoint models/dog.pt \
+  --updates 20 \
+  --episodes-per-update 16
+
+Start the agent
+
+./.venv/bin/python -m doobyscoo serve \
+  --model models/dog.pt \
+  --port 8765 \
+  --maps maps/played \
+  --train-maps maps/train \
+  --val-maps maps/validation \
+  --learn-updates 5
+

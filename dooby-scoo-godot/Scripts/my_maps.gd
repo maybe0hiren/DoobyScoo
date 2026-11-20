@@ -12,7 +12,9 @@ func _ready() -> void:
 
 
 func load_saved_mazes() -> void:
-	var container = $MarginContainer/VBoxContainer/VBoxContainer2
+	var container: Control = get_node_or_null("MarginContainer/VBoxContainer/ScrollContainer/VBoxContainer2")
+	if container == null:
+		container = $MarginContainer/VBoxContainer/VBoxContainer2
 	for child in container.get_children():
 		child.queue_free()
 
@@ -59,7 +61,8 @@ func load_saved_mazes() -> void:
 		row.get_node("LastModified").text = created_str
 
 		container.add_child(row)
-		row.custom_minimum_size = Vector2(800, 44)
+		row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.custom_minimum_size = Vector2(0, 44)
 
 
 func _on_back_button_pressed() -> void:

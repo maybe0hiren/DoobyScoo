@@ -1,24 +1,13 @@
 """Partial observation encoder with 5x5 local view, legal action masking,
-dead-end/junction topology awareness, episodic exploration memory, and
-5-Bone + End objective awareness.
+dead-end/junction topology awareness, episodic exploration & oscillation memory,
+and score-aware 5-Bone + End objective awareness.
 
-The Dog perceives:
-  - Its four immediate adjacent cells (UP, DOWN, LEFT, RIGHT)
-  - Its current cell status (Pit, Bone, End, remaining Bone ratio)
-  - Episodic visitation memory (visit counts of adjacent cells, current cell,
-    and directed doorway traversals, plus previous action and wall-collision flag)
-  - Relative positions and collected status of all 5 Bones from the start of the episode:
-    (dxNorm, dyNorm, isCollected) for Bone 1..5
-  - A 5x5 local view centred around the Dog's current position (row=2, col=2) containing:
-    BLOCKED/WALL (0), EMPTY (1), BONE (2), END (3), PIT (4), UNKNOWN/UNEXPLORED (5)
-  - Four-direction legal action mask (UP, DOWN, LEFT, RIGHT)
-  - Local navigation topology awareness (dead end, corridor, junction, multiple exits,
-    explored exits, unexplored exits, known dead-end exits)
-  - Episodic exploration & mistake memory ratios
-  - Distance and direction to the nearest End, active locked objective, and step progress
-
-The Dog NEVER receives the complete maze layout, hidden walls, unexplored corridors,
-undiscovered pits, or hidden shortest-path routes.
+Strict partial observability is preserved at all times:
+  - The Dog never receives the complete maze layout, hidden walls, unexplored
+    corridors, undiscovered pits, or oracle shortest-path routes.
+  - All topological knowledge (knownDeadEnds, knownJunctions, discoveredCells,
+    edgeCounts, visitCounts, oscillation flags) comes exclusively from the
+    Dog's actual experience during the current episode.
 
 Layout (OBSERVATION_SIZE = 95):
   0-3   neighbour type UP/DOWN/LEFT/RIGHT  (BLOCKED=0, EMPTY=1, BONE=2, END=3, PIT=4) / 4
@@ -47,19 +36,19 @@ Layout (OBSERVATION_SIZE = 95):
           71-74: exploredExits UP/DOWN/LEFT/RIGHT
           75-78: unexploredExits UP/DOWN/LEFT/RIGHT
           79-82: deadEndExits UP/DOWN/LEFT/RIGHT
-  83-88 Episodic exploration & mistake memory (6 features):
+  83-88 Episodic exploration & oscillation memory (6 features):
           83: visitedCells / totalCells
           84: discoveredCells / totalCells
           85: knownDeadEnds / visitedCells
           86: knownJunctions / visitedCells
-          87: loopMistakeActive flag
+          87: oscillation / loopMistakeActive flag
           88: normalized no-progress streak
   89-94 Objective distance & progress awareness (6 features):
           89: nearest End dx normalized in [-1, 1]
           90: nearest End dy normalized in [-1, 1]
           91: nearest End Manhattan distance normalized in [0, 1]
-          92: active objective dx normalized in [-1, 1]
-          93: active objective dy normalized in [-1, 1]
+          92: active locked objective dx normalized in [-1, 1]
+          93: active locked objective dy normalized in [-1, 1]
           94: latest step objective progress in [-1, 1]
 """
 import numpy as np
@@ -193,6 +182,7 @@ class ObservationEncoder:
     def encodeNavigation(self, env):
         """Compute local dead-end, corridor, junction, and exit status from discovered info only."""
         knownDeadEnds = getattr(env, "knownDeadEnds", set())
+        deadEndEdges = getattr(env, "deadEndEdges", set())
         edgeCounts = getattr(env, "edgeCounts", {})
         pos = env.position
 
@@ -214,7 +204,12 @@ class ObservationEncoder:
             edgeTraversed = edgeCounts.get((pos, action), 0) > 0
             targetVisited = env.visitCountAt(target) > 0
             isExplored = bool(edgeTraversed or targetVisited)
-            isDeadEndBranch = bool(target in knownDeadEnds and target not in env.remainingBones and target not in env.ends)
+            edgeTuple = (int(pos[0]), int(pos[1]), int(action))
+            isDeadEndBranch = bool(
+                (target in knownDeadEnds or edgeTuple in deadEndEdges)
+                and target not in env.remainingBones
+                and target not in env.ends
+            )
             if not isDeadEndBranch:
                 nonDeadEndOpenCount += 1
             exploredExits.append(1.0 if isExplored else 0.0)
@@ -251,7 +246,7 @@ class ObservationEncoder:
         }
 
     def encodeExplorationMemory(self, env):
-        """Encode episodic discovery and mistake indicators in [0.0, 1.0]."""
+        """Encode episodic discovery and oscillation/mistake indicators in [0.0, 1.0]."""
         totalCells = float(max(1, env.width * env.height))
         visitedCount = float(len(getattr(env, "visitCounts", {})))
         discoveredCount = float(len(getattr(env, "discoveredCells", getattr(env, "visitCounts", {}))))
@@ -262,7 +257,7 @@ class ObservationEncoder:
         discoveredRatio = min(1.0, discoveredCount / totalCells)
         deadEndRatio = min(1.0, knownDeadEndsCount / max(1.0, visitedCount))
         junctionRatio = min(1.0, knownJunctionsCount / max(1.0, visitedCount))
-        loopMistakeActive = 1.0 if bool(getattr(env, "lastStepWasMistake", False)) else 0.0
+        loopMistakeActive = 1.0 if bool(getattr(env, "lastStepWasMistake", False) or getattr(env, "oscillationActive", False)) else 0.0
         noProgressNorm = min(1.0, float(getattr(env, "noProgressStreak", 0)) / 8.0)
 
         return np.asarray(
@@ -449,3 +444,4 @@ class ObservationEncoder:
             normalized[LOCAL_VIEW_OFFSET : LOCAL_VIEW_OFFSET + LOCAL_VIEW_SIZE] / LOCAL_VIEW_MAX_CODE
         )
         return normalized
+
