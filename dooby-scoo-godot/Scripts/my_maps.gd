@@ -5,16 +5,27 @@ const SAVE_DIR = "user://Mazes/"
 
 var pending_delete_path: String = ""
 
+@onready var card_panel: PanelContainer = $OuterMargin/CardPanel
+@onready var back_btn: Button = $OuterMargin/CardPanel/VBoxContainer/Header/BackButton
+@onready var new_maze_btn: Button = $OuterMargin/CardPanel/VBoxContainer/Header/NewMazeButton
+@onready var title_label: Label = $OuterMargin/CardPanel/VBoxContainer/Header/Title
+
 
 func _ready() -> void:
+	_apply_theme()
 	MazeSession.ensure_default_maps()
 	load_saved_mazes()
 
 
+func _apply_theme() -> void:
+	card_panel.add_theme_stylebox_override("panel", DoobyUI.make_parchment_panel(22, 3, 24, 20))
+	DoobyUI.style_lavender_button(back_btn, 17, 20)
+	DoobyUI.style_green_button(new_maze_btn, 17, 20)
+	title_label.label_settings = DoobyUI.make_heading_settings(34, DoobyUI.COL_TEXT_CREAM, 7)
+
+
 func load_saved_mazes() -> void:
-	var container: Control = get_node_or_null("MarginContainer/VBoxContainer/ScrollContainer/VBoxContainer2")
-	if container == null:
-		container = $MarginContainer/VBoxContainer/VBoxContainer2
+	var container: Control = $OuterMargin/CardPanel/VBoxContainer/ScrollContainer/VBoxContainer2
 	for child in container.get_children():
 		child.queue_free()
 
@@ -33,13 +44,14 @@ func load_saved_mazes() -> void:
 	dir.list_dir_end()
 	files.sort()
 
+	var idx: int = 0
 	for file_name in files:
 		var path := SAVE_DIR + file_name
 		var data := MazeSerializer.load_maze(path)
 		if data.is_empty():
 			continue
 
-		var row = ROW_SCENE.instantiate()
+		var row: PanelContainer = ROW_SCENE.instantiate()
 		row.maze_path = path
 		if row.has_signal("play_requested"):
 			row.play_requested.connect(_on_play_requested)
@@ -47,31 +59,24 @@ func load_saved_mazes() -> void:
 		row.edit_requested.connect(_on_edit_requested)
 
 		var meta: Dictionary = data.get("metadata", {})
-		row.get_node("MazeName").text = str(meta.get("maze_name", file_name.get_basename()))
-		if row.has_node("AuthorLabel"):
-			row.get_node("AuthorLabel").text = str(meta.get("author", "Player"))
-		if row.has_node("GridSizeLabel"):
-			var gsize := int(meta.get("grid_size", 10))
-			row.get_node("GridSizeLabel").text = "%dx%d" % [gsize, gsize]
-
-		var created_str := str(meta.get("created_at", ""))
-		if created_str.is_empty():
-			var modified := FileAccess.get_modified_time(path)
-			created_str = Time.get_datetime_string_from_unix_time(modified)
-		row.get_node("LastModified").text = created_str
+		var maze_name_str: String = str(meta.get("maze_name", file_name.get_basename()))
+		var author_str: String = str(meta.get("author", "Player"))
+		var gsize: int = int(meta.get("grid_size", 10))
+		if row.has_method("configure"):
+			row.configure(maze_name_str, author_str, "%dx%d" % [gsize, gsize], (idx % 2 == 1))
 
 		container.add_child(row)
 		row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		row.custom_minimum_size = Vector2(0, 44)
+		idx += 1
 
 
 func _on_back_button_pressed() -> void:
-	get_tree().change_scene_to_file("res://scenes/landing_page.tscn")
+	MazeSession.transition_to("res://scenes/landing_page.tscn")
 
 
 func _on_new_maze_button_pressed() -> void:
 	MazeSession.reset_session()
-	get_tree().change_scene_to_file("res://scenes/map_editor_page.tscn")
+	MazeSession.transition_to("res://scenes/map_editor_page.tscn")
 
 
 func _on_play_requested(path: String) -> void:
@@ -81,7 +86,7 @@ func _on_play_requested(path: String) -> void:
 		return
 	MazeSession.loaded_maze = data
 	MazeSession.editing_path = path
-	get_tree().change_scene_to_file("res://scenes/gameplay_page.tscn")
+	MazeSession.transition_to("res://scenes/gameplay_page.tscn")
 
 
 func _on_delete_requested(path: String) -> void:
@@ -97,7 +102,7 @@ func _on_edit_requested(path: String) -> void:
 		return
 	MazeSession.loaded_maze = data
 	MazeSession.editing_path = path
-	get_tree().change_scene_to_file("res://scenes/map_editor_page.tscn")
+	MazeSession.transition_to("res://scenes/map_editor_page.tscn")
 
 
 func _on_delete_dialog_confirmed() -> void:

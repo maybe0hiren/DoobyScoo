@@ -2,32 +2,22 @@
 
 [ext_resource type="Script" uid="uid://blb82yiiek08r" path="res://Scripts/landing_page.gd" id="1_ps000"]
 [ext_resource type="Texture2D" uid="uid://nhaw43buishn" path="res://assets/backgroundImages/mainBG.png" id="1_yfpfs"]
-[ext_resource type="StyleBox" uid="uid://dnh01j62lykjt" path="res://Themes/simpleButton.tres" id="3_nftrr"]
 [ext_resource type="Script" path="res://Scripts/DogController.gd" id="4_dog"]
 
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_nftrr"]
-bg_color = Color(0, 0, 0, 0.6156863)
-corner_radius_top_left = 60
-corner_radius_top_right = 60
-corner_radius_bottom_right = 60
-corner_radius_bottom_left = 60
-shadow_size = 2
-shadow_offset = Vector2(6.69, 5.405)
-
 [sub_resource type="LabelSettings" id="LabelSettings_title"]
-font_size = 68
+font_size = 72
 font_color = Color(1, 0.96, 0.82, 1)
-outline_size = 12
+outline_size = 14
 outline_color = Color(0.24, 0.14, 0.06, 1)
 shadow_size = 6
-shadow_color = Color(0, 0, 0, 0.45)
-shadow_offset = Vector2(4, 4)
+shadow_color = Color(0, 0, 0, 0.42)
+shadow_offset = Vector2(3, 5)
 
 [sub_resource type="LabelSettings" id="LabelSettings_subtitle"]
 font_size = 24
-font_color = Color(0.98, 0.98, 1, 1)
+font_color = Color(0.99, 0.98, 0.94, 1)
 outline_size = 6
-outline_color = Color(0.14, 0.22, 0.32, 1)
+outline_color = Color(0.14, 0.24, 0.16, 1)
 
 [node name="LandingPage" type="Control" unique_id=991402344]
 layout_mode = 3
@@ -49,180 +39,82 @@ texture = ExtResource("1_yfpfs")
 expand_mode = 1
 stretch_mode = 6
 
-[node name="TitleLabel" type="Label" parent="." unique_id=991402345]
+[node name="ContentMargin" type="MarginContainer" parent="." unique_id=991402350]
 layout_mode = 1
-anchors_preset = -1
-anchor_left = 0.5
-anchor_top = 0.052
-anchor_right = 0.5
-anchor_bottom = 0.2
-offset_left = -350.0
-offset_right = 350.0
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
 grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 48
+theme_override_constants/margin_top = 34
+theme_override_constants/margin_right = 48
+theme_override_constants/margin_bottom = 42
+
+[node name="MainVBox" type="VBoxContainer" parent="ContentMargin" unique_id=991402351]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="HeaderBox" type="VBoxContainer" parent="ContentMargin/MainVBox" unique_id=991402352]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="TitleLabel" type="Label" parent="ContentMargin/MainVBox/HeaderBox" unique_id=991402345]
+layout_mode = 2
 text = "DOOBY SCOO"
 label_settings = SubResource("LabelSettings_title")
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="SubtitleLabel" type="Label" parent="." unique_id=991402346]
-layout_mode = 1
-anchors_preset = -1
-anchor_left = 0.5
-anchor_top = 0.188
-anchor_right = 0.5
-anchor_bottom = 0.255
-offset_left = -350.0
-offset_right = 350.0
-grow_horizontal = 2
-text = "Build Mazes & Train Your AI Dog!"
+[node name="SubtitleLabel" type="Label" parent="ContentMargin/MainVBox/HeaderBox" unique_id=991402346]
+layout_mode = 2
+text = "Build Mazes & Train Your AI Dog"
 label_settings = SubResource("LabelSettings_subtitle")
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="MascotDog" type="Node2D" parent="." unique_id=991402347]
-position = Vector2(576, 240)
-scale = Vector2(2.6, 2.6)
+[node name="MascotSpacer" type="Control" parent="ContentMargin/MainVBox" unique_id=991402353]
+layout_mode = 2
+size_flags_vertical = 3
+mouse_filter = 2
+
+[node name="MascotDog" type="Node2D" parent="ContentMargin/MainVBox/MascotSpacer" unique_id=991402347]
+scale = Vector2(2.55, 2.55)
 script = ExtResource("4_dog")
 
-[node name="Panel2" type="Panel" parent="." unique_id=134487511]
-layout_mode = 1
-anchors_preset = -1
-anchor_left = 0.5
-anchor_top = 0.525
-anchor_right = 0.5
-anchor_bottom = 0.642
-offset_left = -396.0
-offset_right = -16.0
-grow_horizontal = 2
-grow_vertical = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_nftrr")
-metadata/_edit_group_ = true
+[node name="MenuVBox" type="VBoxContainer" parent="ContentMargin/MainVBox" unique_id=991402354]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 18
 
-[node name="Panel" type="Panel" parent="." unique_id=1740933251]
-layout_mode = 1
-anchors_preset = -1
-anchor_left = 0.5
-anchor_top = 0.525
-anchor_right = 0.5
-anchor_bottom = 0.642
-offset_left = 14.0
-offset_right = 394.0
-grow_horizontal = 2
-grow_vertical = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_nftrr")
-metadata/_edit_group_ = true
+[node name="TopButtonsRow" type="HBoxContainer" parent="ContentMargin/MainVBox/MenuVBox" unique_id=991402355]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 26
 
-[node name="Panel3" type="Panel" parent="." unique_id=1740933252]
-layout_mode = 1
-anchors_preset = -1
-anchor_left = 0.5
-anchor_top = 0.687
-anchor_right = 0.5
-anchor_bottom = 0.804
-offset_left = -396.0
-offset_right = -16.0
-grow_horizontal = 2
-grow_vertical = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_nftrr")
-metadata/_edit_group_ = true
-
-[node name="Panel4" type="Panel" parent="." unique_id=1740933253]
-layout_mode = 1
-anchors_preset = -1
-anchor_left = 0.5
-anchor_top = 0.687
-anchor_right = 0.5
-anchor_bottom = 0.804
-offset_left = 14.0
-offset_right = 394.0
-grow_horizontal = 2
-grow_vertical = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_nftrr")
-metadata/_edit_group_ = true
-
-[node name="MyMapsButton" type="Button" parent="." unique_id=1042898809]
-layout_mode = 1
-anchors_preset = -1
-anchor_left = 0.5
-anchor_top = 0.525
-anchor_right = 0.5
-anchor_bottom = 0.642
-offset_left = -396.0
-offset_right = -15.0
-grow_horizontal = 2
-grow_vertical = 2
-theme_override_colors/font_color = Color(1, 1, 1, 1)
-theme_override_font_sizes/font_size = 28
-theme_override_styles/normal = ExtResource("3_nftrr")
-theme_override_styles/pressed = ExtResource("3_nftrr")
-theme_override_styles/hover = ExtResource("3_nftrr")
-theme_override_styles/focus = ExtResource("3_nftrr")
+[node name="MyMapsButton" type="Button" parent="ContentMargin/MainVBox/MenuVBox/TopButtonsRow" unique_id=1042898809]
+custom_minimum_size = Vector2(310, 70)
+layout_mode = 2
 text = "My Maps"
-metadata/_edit_group_ = true
 
-[node name="NewMapButton" type="Button" parent="." unique_id=2028949283]
-layout_mode = 1
-anchors_preset = -1
-anchor_left = 0.5
-anchor_top = 0.525
-anchor_right = 0.5
-anchor_bottom = 0.642
-offset_left = 14.0
-offset_right = 395.0
-grow_horizontal = 2
-grow_vertical = 2
-theme_override_colors/font_color = Color(1, 1, 1, 1)
-theme_override_font_sizes/font_size = 28
-theme_override_styles/normal = ExtResource("3_nftrr")
-theme_override_styles/pressed = ExtResource("3_nftrr")
-theme_override_styles/hover = ExtResource("3_nftrr")
-theme_override_styles/focus = ExtResource("3_nftrr")
+[node name="NewMapButton" type="Button" parent="ContentMargin/MainVBox/MenuVBox/TopButtonsRow" unique_id=2028949283]
+custom_minimum_size = Vector2(310, 70)
+layout_mode = 2
 text = "Create Maze"
-metadata/_edit_group_ = true
 
-[node name="PlayButton" type="Button" parent="." unique_id=2028949284]
-layout_mode = 1
-anchors_preset = -1
-anchor_left = 0.5
-anchor_top = 0.687
-anchor_right = 0.5
-anchor_bottom = 0.804
-offset_left = -396.0
-offset_right = -15.0
-grow_horizontal = 2
-grow_vertical = 2
-theme_override_colors/font_color = Color(1, 1, 1, 1)
-theme_override_font_sizes/font_size = 28
-theme_override_styles/normal = ExtResource("3_nftrr")
-theme_override_styles/pressed = ExtResource("3_nftrr")
-theme_override_styles/hover = ExtResource("3_nftrr")
-theme_override_styles/focus = ExtResource("3_nftrr")
-text = "Play / Train Dog"
-metadata/_edit_group_ = true
+[node name="ArenaRow" type="CenterContainer" parent="ContentMargin/MainVBox/MenuVBox" unique_id=991402357]
+layout_mode = 2
 
-[node name="MultiplayerButton" type="Button" parent="." unique_id=2028949285]
-layout_mode = 1
-anchors_preset = -1
-anchor_left = 0.5
-anchor_top = 0.687
-anchor_right = 0.5
-anchor_bottom = 0.804
-offset_left = 14.0
-offset_right = 395.0
-grow_horizontal = 2
-grow_vertical = 2
-theme_override_colors/font_color = Color(1, 0.96, 0.72, 1)
-theme_override_font_sizes/font_size = 28
-theme_override_styles/normal = ExtResource("3_nftrr")
-theme_override_styles/pressed = ExtResource("3_nftrr")
-theme_override_styles/hover = ExtResource("3_nftrr")
-theme_override_styles/focus = ExtResource("3_nftrr")
+[node name="MultiplayerButton" type="Button" parent="ContentMargin/MainVBox/MenuVBox/ArenaRow" unique_id=2028949285]
+custom_minimum_size = Vector2(360, 74)
+layout_mode = 2
 text = "Multiplayer Arena"
-metadata/_edit_group_ = true
 
-[connection signal="button_down" from="NewMapButton" to="." method="_on_new_map_button_button_down"]
-[connection signal="button_up" from="NewMapButton" to="." method="_on_new_map_button_button_up"]
-[connection signal="button_down" from="MyMapsButton" to="." method="_on_my_maps_button_button_down"]
-[connection signal="button_up" from="MyMapsButton" to="." method="_on_my_maps_button_button_up"]
-[connection signal="pressed" from="PlayButton" to="." method="_on_play_button_pressed"]
-[connection signal="pressed" from="MultiplayerButton" to="." method="_on_multiplayer_button_pressed"]
+[node name="BottomSpacer" type="Control" parent="ContentMargin/MainVBox" unique_id=991402358]
+custom_minimum_size = Vector2(0, 12)
+layout_mode = 2
+mouse_filter = 2
+
+[connection signal="pressed" from="ContentMargin/MainVBox/MenuVBox/TopButtonsRow/NewMapButton" to="." method="_on_new_map_button_pressed"]
+[connection signal="pressed" from="ContentMargin/MainVBox/MenuVBox/TopButtonsRow/MyMapsButton" to="." method="_on_my_maps_button_pressed"]
+[connection signal="pressed" from="ContentMargin/MainVBox/MenuVBox/ArenaRow/MultiplayerButton" to="." method="_on_multiplayer_button_pressed"]

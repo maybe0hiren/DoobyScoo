@@ -2,56 +2,61 @@
 
 [ext_resource type="Script" uid="uid://2sh3mb75vrb8" path="res://Scripts/maze_row.gd" id="1_4h6mn"]
 
-[node name="MazeRow" type="HBoxContainer" unique_id=382238219]
-custom_minimum_size = Vector2(0, 50)
+[node name="MazeRow" type="PanelContainer" unique_id=382238219]
+custom_minimum_size = Vector2(0, 52)
 size_flags_horizontal = 3
-theme_override_constants/separation = 16
 script = ExtResource("1_4h6mn")
 
-[node name="MazeName" type="Label" parent="." unique_id=564804351]
+[node name="RowHBox" type="HBoxContainer" parent="." unique_id=382238220]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="MazeName" type="Label" parent="RowHBox" unique_id=564804351]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.1, 0.14, 0.1, 1)
-theme_override_font_sizes/font_size = 20
+size_flags_stretch_ratio = 1.7
+theme_override_colors/font_color = Color(0.13, 0.19, 0.12, 1)
+theme_override_font_sizes/font_size = 19
 text = "Maze Name"
+vertical_alignment = 1
+text_overrun_behavior = 3
 
-[node name="AuthorLabel" type="Label" parent="." unique_id=564804352]
+[node name="AuthorLabel" type="Label" parent="RowHBox" unique_id=564804352]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.18, 0.22, 0.18, 1)
-theme_override_font_sizes/font_size = 18
+theme_override_colors/font_color = Color(0.36, 0.43, 0.34, 1)
+theme_override_font_sizes/font_size = 15
 text = "Player"
+vertical_alignment = 1
+text_overrun_behavior = 3
 
-[node name="GridSizeLabel" type="Label" parent="." unique_id=564804353]
-custom_minimum_size = Vector2(90, 0)
+[node name="GridSizeLabel" type="Label" parent="RowHBox" unique_id=564804353]
+custom_minimum_size = Vector2(78, 0)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.18, 0.22, 0.18, 1)
-theme_override_font_sizes/font_size = 18
+theme_override_colors/font_color = Color(0.36, 0.43, 0.34, 1)
+theme_override_font_sizes/font_size = 15
 text = "10x10"
+horizontal_alignment = 1
+vertical_alignment = 1
 
-[node name="LastModified" type="Label" parent="." unique_id=568470801]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.22, 0.26, 0.22, 1)
-theme_override_font_sizes/font_size = 17
-text = "2026-11-11"
-
-[node name="HBoxContainer" type="HBoxContainer" parent="." unique_id=11429392]
+[node name="HBoxContainer" type="HBoxContainer" parent="RowHBox" unique_id=11429392]
+custom_minimum_size = Vector2(268, 0)
 layout_mode = 2
 size_flags_horizontal = 8
-theme_override_constants/separation = 10
+alignment = 2
+theme_override_constants/separation = 8
 
-[node name="Play" type="Button" parent="HBoxContainer" unique_id=1297271574]
-custom_minimum_size = Vector2(110, 36)
+[node name="Play" type="Button" parent="RowHBox/HBoxContainer" unique_id=1297271574]
+custom_minimum_size = Vector2(92, 34)
 layout_mode = 2
-text = "Play / Train"
+text = "Play"
 
-[node name="Edit" type="Button" parent="HBoxContainer" unique_id=1297271575]
-custom_minimum_size = Vector2(80, 36)
+[node name="Edit" type="Button" parent="RowHBox/HBoxContainer" unique_id=1297271575]
+custom_minimum_size = Vector2(76, 34)
 layout_mode = 2
 text = "Edit"
 
-[node name="Delete" type="Button" parent="HBoxContainer" unique_id=383937474]
-custom_minimum_size = Vector2(80, 36)
+[node name="Delete" type="Button" parent="RowHBox/HBoxContainer" unique_id=383937474]
+custom_minimum_size = Vector2(82, 34)
 layout_mode = 2
 text = "Delete"

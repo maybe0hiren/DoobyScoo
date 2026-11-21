@@ -1,28 +1,36 @@
 extends Control
 
-@onready var board: GameplayBoard = $MainHBox/BoardContainer/GameplayBoard
-@onready var mazeTitleLabel: Label = $MainHBox/SidePanel/PanelMargin/VBox/MazeTitleLabel
-@onready var serverStatusLabel: Label = $MainHBox/SidePanel/PanelMargin/VBox/ServerStatusLabel
-@onready var modeSelect: OptionButton = $MainHBox/SidePanel/PanelMargin/VBox/ModeRow/ModeSelect
-@onready var deterministicCheck: CheckBox = $MainHBox/SidePanel/PanelMargin/VBox/OptionsRow/DeterministicCheck
-@onready var collectExpCheck: CheckBox = $MainHBox/SidePanel/PanelMargin/VBox/OptionsRow/CollectExpCheck
-@onready var stepsValueLabel: Label = $MainHBox/SidePanel/PanelMargin/VBox/StatsGrid/StepsValue
-@onready var bonesValueLabel: Label = $MainHBox/SidePanel/PanelMargin/VBox/StatsGrid/BonesValue
-@onready var scoreValueLabel: Label = $MainHBox/SidePanel/PanelMargin/VBox/StatsGrid/ScoreValue
-@onready var statusValueLabel: Label = $MainHBox/SidePanel/PanelMargin/VBox/StatsGrid/StatusValue
-@onready var actionLogLabel: Label = $MainHBox/SidePanel/PanelMargin/VBox/ActionLogLabel
-@onready var autoPlayBtn: Button = $MainHBox/SidePanel/PanelMargin/VBox/ControlsRow1/AutoPlayButton
-@onready var stepBtn: Button = $MainHBox/SidePanel/PanelMargin/VBox/ControlsRow1/StepButton
-@onready var resetBtn: Button = $MainHBox/SidePanel/PanelMargin/VBox/ControlsRow2/ResetButton
-@onready var learnBtn: Button = $MainHBox/SidePanel/PanelMargin/VBox/ControlsRow2/LearnButton
-@onready var speedSlider: HSlider = $MainHBox/SidePanel/PanelMargin/VBox/SpeedRow/SpeedSlider
+@onready var board_frame: PanelContainer = $OuterMargin/MainHBox/BoardContainer
+@onready var side_panel: PanelContainer = $OuterMargin/MainHBox/SidePanel
+@onready var status_pill: PanelContainer = $OuterMargin/MainHBox/SidePanel/VBox/StatusPill
+@onready var board: GameplayBoard = $OuterMargin/MainHBox/BoardContainer/GameplayBoard
+@onready var mazeTitleLabel: Label = $OuterMargin/MainHBox/SidePanel/VBox/MazeTitleLabel
+@onready var serverStatusLabel: Label = $OuterMargin/MainHBox/SidePanel/VBox/StatusPill/ServerStatusLabel
+@onready var modeSelect: OptionButton = $OuterMargin/MainHBox/SidePanel/VBox/ModeRow/ModeSelect
+@onready var deterministicCheck: CheckBox = $OuterMargin/MainHBox/SidePanel/VBox/OptionsRow/DeterministicCheck
+@onready var collectExpCheck: CheckBox = $OuterMargin/MainHBox/SidePanel/VBox/OptionsRow/CollectExpCheck
+@onready var stepsValueLabel: Label = $OuterMargin/MainHBox/SidePanel/VBox/StatsGrid/StepsCard/VBox/StepsValue
+@onready var bonesValueLabel: Label = $OuterMargin/MainHBox/SidePanel/VBox/StatsGrid/BonesCard/VBox/BonesValue
+@onready var scoreValueLabel: Label = $OuterMargin/MainHBox/SidePanel/VBox/StatsGrid/ScoreCard/VBox/ScoreValue
+@onready var statusValueLabel: Label = $OuterMargin/MainHBox/SidePanel/VBox/StatsGrid/StatusCard/VBox/StatusValue
+@onready var actionLogLabel: Label = $OuterMargin/MainHBox/SidePanel/VBox/ActionLogLabel
+@onready var autoPlayBtn: Button = $OuterMargin/MainHBox/SidePanel/VBox/ControlsRow1/AutoPlayButton
+@onready var stepBtn: Button = $OuterMargin/MainHBox/SidePanel/VBox/ControlsRow1/StepButton
+@onready var resetBtn: Button = $OuterMargin/MainHBox/SidePanel/VBox/ControlsRow2/ResetButton
+@onready var learnBtn: Button = $OuterMargin/MainHBox/SidePanel/VBox/ControlsRow2/LearnButton
+@onready var editMazeBtn: Button = $OuterMargin/MainHBox/SidePanel/VBox/NavRow/EditMazeButton
+@onready var myMapsBtn: Button = $OuterMargin/MainHBox/SidePanel/VBox/NavRow/MyMapsButton
+@onready var homeBtn: Button = $OuterMargin/MainHBox/SidePanel/VBox/NavRow/HomeButton
+@onready var speedSlider: HSlider = $OuterMargin/MainHBox/SidePanel/VBox/SpeedRow/SpeedSlider
 @onready var resultDialog: AcceptDialog = $ResultDialog
 @onready var connectionDialog: ConfirmationDialog = $ConnectionDialog
 
 var adapter: RLAdapter
 var score_manager: ScoreManager
+var completion_popup: MazeCompletionPopup
 var auto_play: bool = false
 var step_in_progress: bool = false
+var animating_step: bool = false
 var step_timer: float = 0.0
 var step_interval: float = 0.18
 var total_bones_in_maze: int = 5
@@ -37,6 +45,9 @@ var last_known_model_version: int = 1
 
 
 func _ready() -> void:
+	_apply_theme()
+	completion_popup = MazeCompletionPopup.new()
+	add_child(completion_popup)
 	score_manager = ScoreManager.new(5)
 	adapter = RLAdapter.new()
 	add_child(adapter)
@@ -49,9 +60,9 @@ func _ready() -> void:
 	adapter.integration_error.connect(_on_integration_error)
 
 	modeSelect.clear()
-	modeSelect.add_item("Mode A: Training (RL Active)", 0)
-	modeSelect.add_item("Mode B: Evaluation / Gameplay", 1)
-	modeSelect.add_item("Mock Client (Offline UI Test)", 2)
+	modeSelect.add_item("Training (RL Active)", 0)
+	modeSelect.add_item("Evaluation / Gameplay", 1)
+	modeSelect.add_item("Offline Mock Mode", 2)
 
 	if MazeSession.selected_mode == "evaluation":
 		modeSelect.selected = 1
@@ -76,14 +87,46 @@ func _ready() -> void:
 	_initialize_gameplay()
 
 
+func _apply_theme() -> void:
+	board_frame.add_theme_stylebox_override(
+		"panel",
+		DoobyUI.make_meadow_panel(DoobyUI.COL_MEADOW_DARK, DoobyUI.COL_GOLD_BORDER, 20, 3, 10, 10)
+	)
+	side_panel.add_theme_stylebox_override(
+		"panel",
+		DoobyUI.make_meadow_panel(DoobyUI.COL_MEADOW_DARK, DoobyUI.COL_GOLD_BORDER, 20, 3, 20, 18)
+	)
+	status_pill.add_theme_stylebox_override(
+		"panel",
+		DoobyUI.make_pill(DoobyUI.COL_MEADOW_DEEP, Color(0.45, 0.58, 0.48, 0.7), 14)
+	)
+	mazeTitleLabel.label_settings = DoobyUI.make_heading_settings(24, DoobyUI.COL_TEXT_CREAM, 5)
+
+	var stats_grid: GridContainer = $OuterMargin/MainHBox/SidePanel/VBox/StatsGrid
+	for card in stats_grid.get_children():
+		if card is PanelContainer:
+			(card as PanelContainer).add_theme_stylebox_override(
+				"panel",
+				DoobyUI.make_meadow_panel(DoobyUI.COL_MEADOW_DEEP, Color(0.44, 0.56, 0.46, 0.72), 14, 2, 10, 8)
+			)
+
+	DoobyUI.style_gold_button(autoPlayBtn, 18, 20)
+	DoobyUI.style_lavender_button(stepBtn, 18, 20)
+	DoobyUI.style_subtle_button(resetBtn, 16, 18)
+	DoobyUI.style_green_button(learnBtn, 16, 18)
+	DoobyUI.style_subtle_button(editMazeBtn, 15, 16)
+	DoobyUI.style_subtle_button(myMapsBtn, 15, 16)
+	DoobyUI.style_lavender_button(homeBtn, 15, 16)
+
+
 func _initialize_gameplay() -> void:
 	if MazeSession.loaded_maze.is_empty() or !MazeSession.loaded_maze.has("grid"):
-		actionLogLabel.text = "No maze loaded. Returning to My Maps..."
+		actionLogLabel.text = "No maze loaded."
 		return
 
 	var meta: Dictionary = MazeSession.loaded_maze.get("metadata", {})
-	var mname := str(meta.get("maze_name", "Custom Maze"))
-	mazeTitleLabel.text = "Maze: " + mname
+	var mname: String = str(meta.get("maze_name", "Custom Maze"))
+	mazeTitleLabel.text = mname
 
 	var grid: Array = MazeSession.loaded_maze["grid"]
 	board.setup_board(grid)
@@ -124,7 +167,7 @@ func _start_rl_episode() -> void:
 
 
 func _process(delta: float) -> void:
-	if !auto_play or step_in_progress or score_manager.completed or score_manager.timed_out:
+	if !auto_play or step_in_progress or animating_step or (board != null and board.dog != null and board.dog.is_moving) or score_manager.completed or score_manager.timed_out:
 		return
 	step_timer += delta
 	if step_timer >= step_interval:
@@ -133,25 +176,28 @@ func _process(delta: float) -> void:
 
 
 func _trigger_single_step() -> void:
-	if step_in_progress or score_manager.completed or score_manager.timed_out:
+	if step_in_progress or animating_step or (board != null and board.dog != null and board.dog.is_moving) or score_manager.completed or score_manager.timed_out:
 		return
 	step_in_progress = true
 	stepBtn.disabled = true
 	var det := deterministicCheck.button_pressed
-	var reported_pos := [board.dog.grid_position.x, board.dog.grid_position.y]
+	var reported_pos: Array = [board.dog.grid_position.x, board.dog.grid_position.y]
 	await adapter.step_agent(det, reported_pos)
 	step_in_progress = false
-	if !score_manager.completed and !score_manager.timed_out:
+	if !animating_step and !score_manager.completed and !score_manager.timed_out:
 		stepBtn.disabled = false
 
 
 func _on_session_started(data: Dictionary) -> void:
+	animating_step = false
 	score_manager.reset()
 	board.setup_board(MazeSession.loaded_maze["grid"])
 	stepBtn.disabled = false
 	autoPlayBtn.disabled = false
 	current_attempt_number = int(data.get("attempt_number", current_attempt_number))
-	if data.get("best_score", null) != null:
+	if data.get("bestOfficialScore", null) != null:
+		current_best_score = int(data.get("bestOfficialScore"))
+	elif data.get("best_score", null) != null:
 		current_best_score = int(data.get("best_score"))
 	pending_episodes_count = int(data.get("pending_episodes", pending_episodes_count))
 	pending_samples_count = int(data.get("pending_samples", pending_samples_count))
@@ -159,14 +205,16 @@ func _on_session_started(data: Dictionary) -> void:
 	current_revisits = int(st.get("revisits", 0))
 	current_new_areas = int(st.get("discoveredCellsCount", 1))
 	_update_learn_button()
-	var mode_badge := "[MOCK CLIENT]" if adapter.use_mock else ("[EVAL MODE]" if modeSelect.selected == 1 else "[TRAINING MODE]")
-	var ver := int(data.get("model_version", 0))
-	actionLogLabel.text = "Training Started — %s Attempt #%d (Model v%d | Pending: %d eps)" % [mode_badge, current_attempt_number, ver, pending_episodes_count]
+	actionLogLabel.text = "Attempt #%d ready — press Start Auto-Play or Single Step." % current_attempt_number
 	_refresh_scoreboard("Ready")
 
 
 func _on_step_completed(result: Dictionary) -> void:
+	animating_step = true
+	stepBtn.disabled = true
 	await board.animate_step_result(result)
+	animating_step = false
+	step_timer = 0.0
 
 	var steps := int(result.get("steps", score_manager.actual_steps + 1))
 	var bones := int(result.get("bonesCollected", score_manager.bones_collected))
@@ -175,9 +223,10 @@ func _on_step_completed(result: Dictionary) -> void:
 	var timeout := bool(result.get("timeout", false)) or score_limit
 	var reward := float(result.get("reward", 0.0))
 	score_manager.sync_from_state(steps, bones, won, timeout, score_manager.cumulative_rl_reward + reward)
+	if !step_in_progress and !score_manager.completed and !score_manager.timed_out:
+		stepBtn.disabled = false
 
 	current_revisits = int(result.get("revisits", current_revisits))
-	var prev_areas := current_new_areas
 	current_new_areas = int(result.get("discoveredCellsCount", current_new_areas))
 	if result.has("attemptNumber"):
 		current_attempt_number = int(result.get("attemptNumber"))
@@ -190,36 +239,24 @@ func _on_step_completed(result: Dictionary) -> void:
 	_update_learn_button()
 
 	var act_name := str(result.get("action_name", result.get("action", "?"))).to_upper()
-	var notes: Array[String] = []
-	if !bool(result.get("moved", true)):
-		notes.append("Blocked by wall")
-	if bool(result.get("teleported", false)):
-		notes.append("Pit teleport!")
-	if bool(result.get("bone", false)):
-		notes.append("Bone Collected")
-	elif current_new_areas > prev_areas:
-		notes.append("Exploring New Area (%d cells)" % current_new_areas)
-	if bool(result.get("enteredDeadEnd", false)):
-		notes.append("Dead End Found")
+	var note := ""
 	if won:
-		notes.append("Reached Goal!")
+		note = "Reached the goal!"
+	elif bool(result.get("bone", false)):
+		note = "Collected a bone!"
+	elif bool(result.get("teleported", false)):
+		note = "Fell into a pit teleport!"
+	elif !bool(result.get("moved", true)):
+		note = "Bumped a wall"
 	elif score_limit:
-		notes.append("Score > 100 (Learning from Failure)")
+		note = "Score limit reached"
 	elif timeout:
-		notes.append("Max steps reached")
+		note = "Step limit reached"
+	else:
+		note = "Moved %s" % act_name
+	actionLogLabel.text = note
 
-	var extra := (" | " + ", ".join(notes)) if !notes.is_empty() else ""
-	actionLogLabel.text = "Attempt #%d | %s -> (%d, %d) | Revisits: %d | Explored: %d%s" % [
-		current_attempt_number,
-		act_name,
-		board.dog.grid_position.x,
-		board.dog.grid_position.y,
-		current_revisits,
-		current_new_areas,
-		extra
-	]
-
-	var status_txt := "Victory!" if won else ("Score > 100" if score_limit else ("Timeout" if timeout else "Attempt #%d" % current_attempt_number))
+	var status_txt := "Victory!" if won else ("Score > 100" if score_limit else ("Timeout" if timeout else "Running"))
 	_refresh_scoreboard(status_txt)
 
 
@@ -228,119 +265,98 @@ func _on_episode_ended(result: Dictionary) -> void:
 	_update_autoplay_button()
 	stepBtn.disabled = true
 
-	var won := bool(result.get("won", score_manager.completed))
-	var score_limit := bool(result.get("scoreLimitExceeded", false))
-	var final_score := score_manager.get_score()
-	var training_score := int(result.get("trainingScore", final_score))
-	var steps := score_manager.actual_steps
-	var bones := score_manager.bones_collected
-	var learning_started := bool(result.get("learningStarted", false))
+	var prev_best = current_best_score
+	var won: bool = bool(result.get("won", score_manager.completed))
+	var score_limit: bool = bool(result.get("scoreLimitExceeded", false))
+	var final_score: int = score_manager.get_score()
+	var steps: int = score_manager.actual_steps
+	var bones: int = score_manager.bones_collected
+	var learning_started: bool = bool(result.get("learningStarted", false))
 	var prog_msgs: Array = result.get("progress_messages", [])
 	current_revisits = int(result.get("revisits", current_revisits))
 	current_new_areas = int(result.get("discoveredCellsCount", result.get("newAreasExplored", current_new_areas)))
 	if result.has("attemptNumber"):
 		current_attempt_number = int(result.get("attemptNumber"))
-	if result.get("bestScore", null) != null:
+	if result.get("bestOfficialScore", null) != null:
+		current_best_score = int(result.get("bestOfficialScore"))
+	elif result.get("bestScore", null) != null:
 		current_best_score = int(result.get("bestScore"))
-	elif won and (current_best_score == null or training_score < int(current_best_score)):
-		current_best_score = training_score
+	elif won and (current_best_score == null or final_score < int(current_best_score)):
+		current_best_score = final_score
 	if result.has("pendingEpisodes"):
 		pending_episodes_count = int(result.get("pendingEpisodes"))
 	if result.has("pendingSamples"):
 		pending_samples_count = int(result.get("pendingSamples"))
 	_update_learn_button()
 
-	var headline := "Dooby Solved the Maze!" if won else ("Learning from Failure (Training Score > 100)" if score_limit else "Episode Ended (Step Limit Reached)")
-	var best_txt := str(current_best_score) if current_best_score != null else "N/A"
-	var learn_note := ""
+	var is_new_best: bool = won and (prev_best == null or final_score < int(prev_best))
 	if !prog_msgs.is_empty():
-		var joined_prog := ""
-		for m in prog_msgs:
-			joined_prog += "\n• " + str(m)
-		learn_note += "\n\nLearning Progress:" + joined_prog
 		actionLogLabel.text = str(prog_msgs[0])
-	if adapter.use_mock:
-		learn_note += "\n\n[Mock Testing Client: No neural network weights were modified.]"
-	elif learning_started:
-		learn_note += "\n\nUpdate RL Policy: PPO policy update started!"
-	elif collectExpCheck.button_pressed:
-		learn_note += "\n\nTrajectory recorded (%d episodes, %d samples waiting). Policy stays frozen until you press Update RL Policy." % [pending_episodes_count, pending_samples_count]
 
-	resultDialog.title = "New Best Score" if (won and !prog_msgs.is_empty()) else ("Victory!" if won else ("Learning from Failure" if score_limit else "Attempt Finished"))
-	resultDialog.dialog_text = (
-		"%s (Attempt #%d)\n\n"
-		+ "Current Score: %d | Training Score: %d (Best: %s, limit 100)\n"
-		+ "Steps Taken: %d | Revisited Cells: %d | New Areas Explored: %d\n"
-		+ "Bones Collected: %d / %d (-%d official score)\n"
-		+ "Episodes Waiting for Policy Update: %d (%d samples)%s"
-	) % [
-		headline,
-		current_attempt_number,
-		final_score,
-		training_score,
-		best_txt,
-		steps,
-		current_revisits,
-		current_new_areas,
-		bones,
-		total_bones_in_maze,
-		bones * score_manager.bone_reward_value,
-		pending_episodes_count,
-		pending_samples_count,
-		learn_note
-	]
-	resultDialog.popup_centered()
 	_refresh_scoreboard("Victory!" if won else ("Score > 100" if score_limit else "Finished"))
-	await adapter.fetch_status()
+	var latest_status: Dictionary = await adapter.fetch_status()
+	var is_learning_now: bool = learning_started or bool(latest_status.get("learning", false))
+	if latest_status.has("pendingEpisodes"):
+		pending_episodes_count = int(latest_status.get("pendingEpisodes"))
+
+	completion_popup.show_completion({
+		"won": won,
+		"score_limit": score_limit,
+		"score": final_score,
+		"steps": steps,
+		"bones": bones,
+		"total_bones": total_bones_in_maze,
+		"best_score": current_best_score,
+		"is_new_best": is_new_best,
+		"pending_episodes": pending_episodes_count,
+		"learning": is_learning_now,
+		"is_mock": adapter.use_mock,
+		"collect_experience": collectExpCheck.button_pressed,
+	})
 
 
 func _on_status_received(status: Dictionary) -> void:
 	if bool(status.get("is_mock", false)):
-		serverStatusLabel.text = "Client: MOCK TESTING MODE (Offline Simulation)"
+		serverStatusLabel.text = "Offline Mock Mode"
 		serverStatusLabel.modulate = Color(1.0, 0.85, 0.35)
 	else:
 		var ver := int(status.get("modelVersion", 1))
 		var ups := int(status.get("updates", 0))
-		var eps := int(status.get("totalEpisodes", 0))
 		pending_episodes_count = int(status.get("pendingEpisodes", pending_episodes_count))
 		pending_samples_count = int(status.get("pendingSamples", pending_samples_count))
 		_update_learn_button()
 		var is_learning := bool(status.get("learning", false))
-		var state_tag := " [Updating Policy...]" if is_learning else " [Policy Frozen]"
-		serverStatusLabel.text = "Python RL%s | Model v%d | Updates: %d | Pending: %d eps (%d steps) | Total: %d" % [
-			state_tag, ver, ups, pending_episodes_count, pending_samples_count, eps
-		]
+		if is_learning:
+			serverStatusLabel.text = "RL Online  •  Updating Policy..."
+		else:
+			serverStatusLabel.text = "RL Online  •  Model v%d  •  %d Pending" % [ver, pending_episodes_count]
 		serverStatusLabel.modulate = Color(0.55, 1.0, 0.65)
 		if ups > last_known_updates and last_known_updates > 0:
-			actionLogLabel.text = "Update RL Policy — Policy updated to Model v%d (Update #%d)!" % [ver, ups]
-		var latest_prog = status.get("latestProgress", null)
-		if latest_prog != null and str(latest_prog) != "" and actionLogLabel.text.begins_with("Update RL Policy — Continual"):
-			actionLogLabel.text = str(latest_prog)
+			actionLogLabel.text = "Policy updated to Model v%d!" % ver
 		last_known_updates = ups
 		last_known_model_version = ver
 
 
 func _on_learning_started(data: Dictionary) -> void:
 	if adapter.use_mock:
-		actionLogLabel.text = "Mock Client active: switch to Mode A/B with Python server for real PPO training."
+		actionLogLabel.text = "Switch to Training mode with Python RL running to update policy."
 	else:
 		var ver := int(data.get("modelVersion", last_known_model_version))
-		var ups := int(data.get("updates", last_known_updates))
-		actionLogLabel.text = "Update RL Policy — Running PPO update on %d pending episodes (%d samples)..." % [pending_episodes_count, pending_samples_count]
+		actionLogLabel.text = "Updating RL policy..."
 		await get_tree().create_timer(0.6).timeout
 		var st := await adapter.fetch_status()
 		var new_ver := int(st.get("modelVersion", ver))
-		var new_ups := int(st.get("updates", ups))
-		actionLogLabel.text = "Update RL Policy — Policy updated! Now using Model v%d (Updates: %d)." % [new_ver, new_ups]
+		actionLogLabel.text = "Policy updated to Model v%d!" % new_ver
 
 
 func _on_integration_error(message: String) -> void:
 	auto_play = false
 	_update_autoplay_button()
 	step_in_progress = false
+	animating_step = false
 	stepBtn.disabled = false
 	actionLogLabel.text = "RL Error: " + message
-	serverStatusLabel.text = "Python RL Server: Disconnected / Error"
+	serverStatusLabel.text = "RL Agent Offline"
 	serverStatusLabel.modulate = Color(1.0, 0.45, 0.45)
 
 
@@ -354,11 +370,11 @@ func _refresh_scoreboard(status_text: String) -> void:
 func _update_learn_button() -> void:
 	if learnBtn == null:
 		return
-	learnBtn.text = "Update RL Policy"
+	learnBtn.text = "Update Policy"
 
 
 func _update_autoplay_button() -> void:
-	autoPlayBtn.text = "Pause Auto-Play" if auto_play else "Start Auto-Play"
+	autoPlayBtn.text = "Pause" if auto_play else "Start Auto-Play"
 
 
 func _apply_speed(slider_val: float) -> void:
@@ -419,17 +435,16 @@ func _on_connection_dialog_confirmed() -> void:
 func _on_edit_maze_button_pressed() -> void:
 	auto_play = false
 	await adapter.stop_session(false)
-	get_tree().change_scene_to_file("res://scenes/map_editor_page.tscn")
+	MazeSession.transition_to("res://scenes/map_editor_page.tscn")
 
 
 func _on_my_maps_button_pressed() -> void:
 	auto_play = false
 	await adapter.stop_session(false)
-	get_tree().change_scene_to_file("res://scenes/my_maps.tscn")
+	MazeSession.transition_to("res://scenes/my_maps.tscn")
 
 
 func _on_home_button_pressed() -> void:
 	auto_play = false
 	await adapter.stop_session(false)
-	get_tree().change_scene_to_file("res://scenes/landing_page.tscn")
-
+	MazeSession.transition_to("res://scenes/landing_page.tscn")

@@ -17,6 +17,10 @@ var multiplayer_server_url: String = "http://127.0.0.1:8000"
 var active_match_id: String = ""
 var profile_slot: String = "default"
 
+var _transition_layer: CanvasLayer
+var _transition_rect: ColorRect
+var _is_transitioning: bool = false
+
 
 func _ready() -> void:
 	var env_rl := OS.get_environment("DOOBYSCOO_RL_URL")
@@ -35,7 +39,67 @@ func _ready() -> void:
 			multiplayer_server_url = arg.substr(13)
 		elif arg.begins_with("--profile-slot="):
 			profile_slot = arg.substr(15)
+	_load_saved_multiplayer_url()
+	_setup_transition_overlay()
 	ensure_default_maps()
+
+
+func _load_saved_multiplayer_url() -> void:
+	var path: String = "user://multiplayer_session_%s.json" % profile_slot
+	if !FileAccess.file_exists(path):
+		return
+	var f: FileAccess = FileAccess.open(path, FileAccess.READ)
+	if f == null:
+		return
+	var raw: String = f.get_as_text()
+	f.close()
+	var parsed = JSON.parse_string(raw)
+	if parsed is Dictionary:
+		var dict_data: Dictionary = parsed
+		var saved_url: String = str(dict_data.get("server_url", "")).strip_edges()
+		if saved_url != "":
+			multiplayer_server_url = saved_url
+
+
+func _setup_transition_overlay() -> void:
+	_transition_layer = CanvasLayer.new()
+	_transition_layer.layer = 100
+	add_child(_transition_layer)
+
+	_transition_rect = ColorRect.new()
+	_transition_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_transition_rect.color = Color(0.08, 0.15, 0.10, 0.0)
+	_transition_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_transition_rect.visible = false
+	_transition_layer.add_child(_transition_rect)
+
+
+func transition_to(scene_path: String) -> void:
+	if _is_transitioning:
+		return
+	if _transition_rect == null:
+		get_tree().change_scene_to_file(scene_path)
+		return
+
+	_is_transitioning = true
+	_transition_rect.visible = true
+	_transition_rect.color.a = 0.0
+
+	var fade_out := create_tween()
+	fade_out.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	fade_out.tween_property(_transition_rect, "color:a", 0.72, 0.12)
+	await fade_out.finished
+
+	get_tree().change_scene_to_file(scene_path)
+	await get_tree().process_frame
+
+	var fade_in := create_tween()
+	fade_in.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	fade_in.tween_property(_transition_rect, "color:a", 0.0, 0.15)
+	await fade_in.finished
+
+	_transition_rect.visible = false
+	_is_transitioning = false
 
 
 func reset_session() -> void:

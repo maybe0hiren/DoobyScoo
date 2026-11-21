@@ -1,12 +1,18 @@
 extends Control
 
-@onready var grid_map: Control = $HBoxContainer/GridMap
-@onready var trainButton: Button = $HBoxContainer/Inventory/Train
-@onready var startBtn: Button = $HBoxContainer/Inventory/Start
-@onready var endBtn: Button = $HBoxContainer/Inventory/End
-@onready var pitBtn: Button = $HBoxContainer/Inventory/Pit
-@onready var boneBtn: Button = $HBoxContainer/Inventory/Bone
-@onready var countsLabel: Label = get_node_or_null("HBoxContainer/Inventory/CountsLabel")
+@onready var board_frame: PanelContainer = $OuterMargin/HBoxContainer/BoardFrame
+@onready var tools_panel: PanelContainer = $OuterMargin/HBoxContainer/ToolsPanel
+@onready var title_label: Label = $OuterMargin/HBoxContainer/ToolsPanel/Inventory/Label
+@onready var counts_pill: PanelContainer = $OuterMargin/HBoxContainer/ToolsPanel/Inventory/CountsPill
+@onready var grid_map: Control = $OuterMargin/HBoxContainer/BoardFrame/GridMap
+@onready var trainButton: Button = $OuterMargin/HBoxContainer/ToolsPanel/Inventory/Train
+@onready var saveBtn: Button = $OuterMargin/HBoxContainer/ToolsPanel/Inventory/Save
+@onready var homeBtn: Button = $OuterMargin/HBoxContainer/ToolsPanel/Inventory/Home
+@onready var startBtn: Button = $OuterMargin/HBoxContainer/ToolsPanel/Inventory/Start
+@onready var endBtn: Button = $OuterMargin/HBoxContainer/ToolsPanel/Inventory/End
+@onready var pitBtn: Button = $OuterMargin/HBoxContainer/ToolsPanel/Inventory/Pit
+@onready var boneBtn: Button = $OuterMargin/HBoxContainer/ToolsPanel/Inventory/Bone
+@onready var countsLabel: Label = $OuterMargin/HBoxContainer/ToolsPanel/Inventory/CountsPill/CountsLabel
 
 var isDirty := false
 var pending_navigation: String = ""
@@ -22,21 +28,36 @@ func update_train_button() -> void:
 	trainButton.disabled = MazeSession.editing_path.is_empty() or isDirty
 
 
+func _apply_theme() -> void:
+	board_frame.add_theme_stylebox_override(
+		"panel",
+		DoobyUI.make_meadow_panel(DoobyUI.COL_MEADOW_DARK, DoobyUI.COL_GOLD_BORDER, 20, 3, 10, 10)
+	)
+	tools_panel.add_theme_stylebox_override("panel", DoobyUI.make_parchment_panel(20, 3, 18, 16))
+	counts_pill.add_theme_stylebox_override(
+		"panel",
+		DoobyUI.make_pill(Color(0.90, 0.87, 0.76, 1.0), Color(0.72, 0.60, 0.40, 0.85), 14)
+	)
+	title_label.label_settings = DoobyUI.make_heading_settings(28, DoobyUI.COL_TEXT_CREAM, 6)
+	DoobyUI.style_green_button(saveBtn, 19, 20)
+	DoobyUI.style_gold_button(trainButton, 19, 20)
+	DoobyUI.style_lavender_button(homeBtn, 18, 20)
+
+
 func _update_tool_buttons() -> void:
-	var active_col := Color(0.85, 1.0, 0.85)
-	var normal_col := Color(1.0, 1.0, 1.0)
-	startBtn.modulate = active_col if grid_map.currentTool == grid_map.Tool.START else normal_col
-	endBtn.modulate = active_col if grid_map.currentTool == grid_map.Tool.END else normal_col
-	pitBtn.modulate = active_col if grid_map.currentTool == grid_map.Tool.PIT else normal_col
-	boneBtn.modulate = active_col if grid_map.currentTool == grid_map.Tool.BONE else normal_col
+	DoobyUI.style_tool_button(startBtn, grid_map.currentTool == grid_map.Tool.START, 18)
+	DoobyUI.style_tool_button(endBtn, grid_map.currentTool == grid_map.Tool.END, 18)
+	DoobyUI.style_tool_button(pitBtn, grid_map.currentTool == grid_map.Tool.PIT, 18)
+	DoobyUI.style_tool_button(boneBtn, grid_map.currentTool == grid_map.Tool.BONE, 18)
 
 
 func _on_counts_changed(starts: int, ends: int, bones: int) -> void:
 	if countsLabel != null:
-		countsLabel.text = "Start: %d/1 | End: %d/2 | Bones: %d/5" % [starts, ends, bones]
+		countsLabel.text = "Start: %d/1  •  End: %d/2  •  Bones: %d/5" % [starts, ends, bones]
 
 
 func _ready() -> void:
+	_apply_theme()
 	if grid_map.has_signal("counts_changed"):
 		grid_map.counts_changed.connect(_on_counts_changed)
 		_on_counts_changed(grid_map.startCount, grid_map.endCount, grid_map.boneCount)
@@ -82,7 +103,7 @@ func save_existing_maze() -> bool:
 		if !pending_navigation.is_empty():
 			var dest := pending_navigation
 			pending_navigation = ""
-			get_tree().change_scene_to_file(dest)
+			MazeSession.transition_to(dest)
 		else:
 			$SuccessDialog.dialog_text = "Maze updated successfully!"
 			$SuccessDialog.popup_centered()
@@ -118,7 +139,7 @@ func _on_save_pressed() -> void:
 		if !pending_navigation.is_empty():
 			var dest := pending_navigation
 			pending_navigation = ""
-			get_tree().change_scene_to_file(dest)
+			MazeSession.transition_to(dest)
 		return
 
 	if !MazeSession.editing_path.is_empty() and isDirty:
@@ -147,7 +168,7 @@ func _on_save_dialog_confirmed() -> void:
 		if !pending_navigation.is_empty():
 			var dest := pending_navigation
 			pending_navigation = ""
-			get_tree().change_scene_to_file(dest)
+			MazeSession.transition_to(dest)
 		else:
 			$SuccessDialog.dialog_text = "Maze saved successfully!"
 			$SuccessDialog.popup_centered()
@@ -167,7 +188,7 @@ func _on_train_pressed() -> void:
 		return
 
 	MazeSession.loaded_maze = MazeSerializer.load_maze(MazeSession.editing_path)
-	get_tree().change_scene_to_file("res://scenes/gameplay_page.tscn")
+	MazeSession.transition_to("res://scenes/gameplay_page.tscn")
 
 
 func _on_unsaved_changes_dialog_custom_action(action: String) -> void:
@@ -179,7 +200,7 @@ func _on_unsaved_changes_dialog_custom_action(action: String) -> void:
 		"discard":
 			pending_navigation = ""
 			MazeSession.reset_session()
-			get_tree().change_scene_to_file("res://scenes/landing_page.tscn")
+			MazeSession.transition_to("res://scenes/landing_page.tscn")
 		"cancel":
 			pending_navigation = ""
 
@@ -189,4 +210,4 @@ func _on_home_pressed() -> void:
 		$UnsavedChangesDialog.popup_centered()
 	else:
 		MazeSession.reset_session()
-		get_tree().change_scene_to_file("res://scenes/landing_page.tscn")
+		MazeSession.transition_to("res://scenes/landing_page.tscn")

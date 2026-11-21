@@ -58,10 +58,11 @@ func animate_teleport(pit_world_pos: Vector2, dest_cell: Vector2i, dest_world_po
 	var tween := create_tween()
 	tween.set_trans(Tween.TRANS_BACK)
 	tween.set_ease(Tween.EASE_IN_OUT)
-	tween.tween_property(self, "position", pit_world_pos, step_duration * 0.45)
-	tween.tween_property(self, "scale", Vector2(0.15, 0.15) * base_scale, step_duration * 0.25)
+	tween.tween_property(self, "position", pit_world_pos, maxf(step_duration * 0.6, 0.10))
+	tween.tween_property(self, "scale", Vector2(0.15, 0.15) * base_scale, 0.18)
+	tween.tween_interval(0.12)
 	tween.tween_callback(func(): position = dest_world_pos)
-	tween.tween_property(self, "scale", Vector2(base_scale, base_scale), step_duration * 0.3)
+	tween.tween_property(self, "scale", Vector2(base_scale, base_scale), 0.18)
 	await tween.finished
 	is_moving = false
 	animation_finished.emit()

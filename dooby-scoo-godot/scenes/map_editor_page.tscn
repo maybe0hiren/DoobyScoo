@@ -4,13 +4,9 @@
 [ext_resource type="Texture2D" uid="uid://nhaw43buishn" path="res://assets/backgroundImages/mainBG.png" id="1_n5lbb"]
 [ext_resource type="Script" uid="uid://c86h8d8anr2oe" path="res://Scripts/grid_map.gd" id="2_gheom"]
 
-[sub_resource type="LabelSettings" id="LabelSettings_n5lbb"]
-font_size = 38
-font_color = Color(0.12, 0.16, 0.12, 1)
-
 [sub_resource type="LabelSettings" id="LabelSettings_counts"]
-font_size = 18
-font_color = Color(0.15, 0.22, 0.15, 1)
+font_size = 15
+font_color = Color(0.16, 0.24, 0.16, 1)
 
 [node name="MapEditorPage" type="Control" unique_id=1632855231]
 layout_mode = 3
@@ -32,20 +28,29 @@ texture = ExtResource("1_n5lbb")
 expand_mode = 1
 stretch_mode = 6
 
-[node name="HBoxContainer" type="HBoxContainer" parent="." unique_id=243377561]
+[node name="OuterMargin" type="MarginContainer" parent="." unique_id=243377560]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 16.0
-offset_top = 12.0
-offset_right = -16.0
-offset_bottom = -12.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_constants/separation = 16
+theme_override_constants/margin_left = 22
+theme_override_constants/margin_top = 18
+theme_override_constants/margin_right = 22
+theme_override_constants/margin_bottom = 18
 
-[node name="GridMap" type="Control" parent="HBoxContainer" unique_id=1131785181]
+[node name="HBoxContainer" type="HBoxContainer" parent="OuterMargin" unique_id=243377561]
+layout_mode = 2
+theme_override_constants/separation = 18
+
+[node name="BoardFrame" type="PanelContainer" parent="OuterMargin/HBoxContainer" unique_id=1131785180]
+custom_minimum_size = Vector2(380, 380)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="GridMap" type="Control" parent="OuterMargin/HBoxContainer/BoardFrame" unique_id=1131785181]
 custom_minimum_size = Vector2(360, 360)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -53,70 +58,68 @@ size_flags_vertical = 3
 script = ExtResource("2_gheom")
 metadata/_edit_group_ = true
 
-[node name="Inventory" type="VBoxContainer" parent="HBoxContainer" unique_id=1361154007]
-custom_minimum_size = Vector2(360, 0)
+[node name="ToolsPanel" type="PanelContainer" parent="OuterMargin/HBoxContainer" unique_id=1361154006]
+custom_minimum_size = Vector2(330, 0)
 layout_mode = 2
 size_flags_vertical = 3
-theme_override_constants/separation = 8
-alignment = 1
 
-[node name="Label" type="Label" parent="HBoxContainer/Inventory" unique_id=505817056]
-custom_minimum_size = Vector2(100, 44)
+[node name="Inventory" type="VBoxContainer" parent="OuterMargin/HBoxContainer/ToolsPanel" unique_id=1361154007]
 layout_mode = 2
-text = "Maze Tools"
-label_settings = SubResource("LabelSettings_n5lbb")
+size_flags_vertical = 3
+theme_override_constants/separation = 10
+
+[node name="Label" type="Label" parent="OuterMargin/HBoxContainer/ToolsPanel/Inventory" unique_id=505817056]
+layout_mode = 2
+text = "MAZE TOOLS"
 horizontal_alignment = 1
 vertical_alignment = 1
-uppercase = true
 
-[node name="CountsLabel" type="Label" parent="HBoxContainer/Inventory" unique_id=505817057]
+[node name="CountsPill" type="PanelContainer" parent="OuterMargin/HBoxContainer/ToolsPanel/Inventory" unique_id=505817058]
 layout_mode = 2
-text = "Start: 0/1 | End: 0/2 | Bones: 0/5"
+
+[node name="CountsLabel" type="Label" parent="OuterMargin/HBoxContainer/ToolsPanel/Inventory/CountsPill" unique_id=505817057]
+layout_mode = 2
+text = "Start: 0/1  •  End: 0/2  •  Bones: 0/5"
 label_settings = SubResource("LabelSettings_counts")
 horizontal_alignment = 1
 
-[node name="Start" type="Button" parent="HBoxContainer/Inventory" unique_id=1685514787]
-custom_minimum_size = Vector2(360, 30)
+[node name="Start" type="Button" parent="OuterMargin/HBoxContainer/ToolsPanel/Inventory" unique_id=1685514787]
+custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
-theme_override_font_sizes/font_size = 32
 text = "Start (Dog Spawn)"
 
-[node name="End" type="Button" parent="HBoxContainer/Inventory" unique_id=272548928]
-custom_minimum_size = Vector2(360, 30)
+[node name="End" type="Button" parent="OuterMargin/HBoxContainer/ToolsPanel/Inventory" unique_id=272548928]
+custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
-theme_override_font_sizes/font_size = 32
 text = "End (Goal Flag)"
 
-[node name="Pit" type="Button" parent="HBoxContainer/Inventory" unique_id=675291691]
-custom_minimum_size = Vector2(360, 30)
+[node name="Pit" type="Button" parent="OuterMargin/HBoxContainer/ToolsPanel/Inventory" unique_id=675291691]
+custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
-theme_override_font_sizes/font_size = 32
 text = "Pit (Drag to Target)"
 
-[node name="Bone" type="Button" parent="HBoxContainer/Inventory" unique_id=312885082]
-custom_minimum_size = Vector2(360, 30)
+[node name="Bone" type="Button" parent="OuterMargin/HBoxContainer/ToolsPanel/Inventory" unique_id=312885082]
+custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
-theme_override_font_sizes/font_size = 32
-text = "Bone (+Score)"
+text = "Bone (-5 Score)"
 
-[node name="HSeparator" type="HSeparator" parent="HBoxContainer/Inventory" unique_id=43853860]
+[node name="Spacer" type="Control" parent="OuterMargin/HBoxContainer/ToolsPanel/Inventory" unique_id=43853860]
 layout_mode = 2
+size_flags_vertical = 3
 
-[node name="Save" type="Button" parent="HBoxContainer/Inventory" unique_id=750125412]
-custom_minimum_size = Vector2(360, 30)
+[node name="Save" type="Button" parent="OuterMargin/HBoxContainer/ToolsPanel/Inventory" unique_id=750125412]
+custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
-theme_override_font_sizes/font_size = 32
 text = "Save Maze"
 
-[node name="Train" type="Button" parent="HBoxContainer/Inventory" unique_id=2120237274]
-custom_minimum_size = Vector2(0, 30)
+[node name="Train" type="Button" parent="OuterMargin/HBoxContainer/ToolsPanel/Inventory" unique_id=2120237274]
+custom_minimum_size = Vector2(0, 50)
 layout_mode = 2
-theme_override_font_sizes/font_size = 32
-text = "Train / Play Dog"
+text = "Play / Train Dog"
 
-[node name="Home" type="Button" parent="HBoxContainer/Inventory" unique_id=1521754950]
+[node name="Home" type="Button" parent="OuterMargin/HBoxContainer/ToolsPanel/Inventory" unique_id=1521754950]
+custom_minimum_size = Vector2(0, 44)
 layout_mode = 2
-theme_override_font_sizes/font_size = 32
 text = "Home"
 
 [node name="SaveDialog" type="ConfirmationDialog" parent="." unique_id=493853103]
@@ -154,12 +157,12 @@ title = "Unsaved Changes"
 dialog_text = "You have unsaved changes.
 What would you like to do?"
 
-[connection signal="pressed" from="HBoxContainer/Inventory/Start" to="." method="_on_start_pressed"]
-[connection signal="pressed" from="HBoxContainer/Inventory/End" to="." method="_on_end_pressed"]
-[connection signal="pressed" from="HBoxContainer/Inventory/Pit" to="." method="_on_pit_pressed"]
-[connection signal="pressed" from="HBoxContainer/Inventory/Bone" to="." method="_on_bone_pressed"]
-[connection signal="pressed" from="HBoxContainer/Inventory/Save" to="." method="_on_save_pressed"]
-[connection signal="pressed" from="HBoxContainer/Inventory/Train" to="." method="_on_train_pressed"]
-[connection signal="pressed" from="HBoxContainer/Inventory/Home" to="." method="_on_home_pressed"]
+[connection signal="pressed" from="OuterMargin/HBoxContainer/ToolsPanel/Inventory/Start" to="." method="_on_start_pressed"]
+[connection signal="pressed" from="OuterMargin/HBoxContainer/ToolsPanel/Inventory/End" to="." method="_on_end_pressed"]
+[connection signal="pressed" from="OuterMargin/HBoxContainer/ToolsPanel/Inventory/Pit" to="." method="_on_pit_pressed"]
+[connection signal="pressed" from="OuterMargin/HBoxContainer/ToolsPanel/Inventory/Bone" to="." method="_on_bone_pressed"]
+[connection signal="pressed" from="OuterMargin/HBoxContainer/ToolsPanel/Inventory/Save" to="." method="_on_save_pressed"]
+[connection signal="pressed" from="OuterMargin/HBoxContainer/ToolsPanel/Inventory/Train" to="." method="_on_train_pressed"]
+[connection signal="pressed" from="OuterMargin/HBoxContainer/ToolsPanel/Inventory/Home" to="." method="_on_home_pressed"]
 [connection signal="confirmed" from="SaveDialog" to="." method="_on_save_dialog_confirmed"]
 [connection signal="custom_action" from="UnsavedChangesDialog" to="." method="_on_unsaved_changes_dialog_custom_action"]
